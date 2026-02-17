@@ -6,12 +6,12 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-sagemaker-execution-*",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-stepfunctions-*",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-lambda-*",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-ecs-task-*",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-eventbridge-*",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-scheduler-*"
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-sagemaker-execution-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-stepfunctions-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-lambda-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-ecs-task-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-eventbridge-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-scheduler-*"
       ],
       "Condition": {
         "StringEquals": {

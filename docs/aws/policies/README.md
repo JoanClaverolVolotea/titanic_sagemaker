@@ -14,13 +14,21 @@ Permitir que el usuario operador de Data Science pueda:
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
 
-## Reemplazos obligatorios
-Antes de crear las politicas, reemplaza:
-- `<ACCOUNT_ID>` por tu AWS Account ID.
+## Cuenta y region
+Esta version ya usa:
+- AWS Account ID: `939122281183`
+- Region operativa: `eu-west-1`
+
+Si ejecutas estos documentos en otra cuenta o region:
+- Reemplaza el Account ID en los ARN.
+- Ajusta la condicion `aws:RequestedRegion` en `01-ds-observability-readonly.json`.
 - Si cambiaste nombres de roles o buckets, ajusta los ARN para tu naming real.
 
 ## Creacion de politicas (AWS CLI)
 ```bash
+export AWS_REGION=eu-west-1
+export AWS_DEFAULT_REGION=eu-west-1
+
 aws iam create-policy \
   --policy-name titanic-ds-observability-readonly \
   --policy-document file://docs/aws/policies/01-ds-observability-readonly.json
@@ -41,10 +49,10 @@ aws iam create-policy \
 ## Asignacion a usuario
 Adjunta las politicas al usuario operador (ejemplo `titanic-ds-operator`):
 ```bash
-aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/titanic-ds-observability-readonly
-aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/titanic-ds-assume-environment-roles
-aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/titanic-ds-passrole-restricted
-aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/titanic-ds-s3-data-access
+aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::939122281183:policy/titanic-ds-observability-readonly
+aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::939122281183:policy/titanic-ds-assume-environment-roles
+aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::939122281183:policy/titanic-ds-passrole-restricted
+aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:iam::939122281183:policy/titanic-ds-s3-data-access
 ```
 
 ## Validacion minima
@@ -52,11 +60,13 @@ aws iam attach-user-policy --user-name titanic-ds-operator --policy-arn arn:aws:
 aws sts get-caller-identity
 aws iam list-attached-user-policies --user-name titanic-ds-operator
 aws iam simulate-principal-policy \
-  --policy-source-arn arn:aws:iam::<ACCOUNT_ID>:user/titanic-ds-operator \
-  --action-names sts:AssumeRole iam:PassRole cloudwatch:GetMetricData s3:PutObject
+  --policy-source-arn arn:aws:iam::939122281183:user/titanic-ds-operator \
+  --action-names sts:AssumeRole iam:PassRole cloudwatch:GetMetricData s3:PutObject \
+  --context-entries ContextKeyName=aws:RequestedRegion,ContextKeyType=string,ContextKeyValues=eu-west-1
 ```
 
 ## Notas de seguridad
 - El flujo recomendado es que el usuario humano asuma roles de workload/deploy en vez de operar todo con permisos directos.
 - `iam:PassRole` esta acotado por nombre de rol y por `iam:PassedToService`.
+- Operaciones regionales de observabilidad quedaron acotadas a `eu-west-1` via `aws:RequestedRegion`.
 - Evitar `Action: "*"` y `Resource: "*"` para operaciones de escritura.

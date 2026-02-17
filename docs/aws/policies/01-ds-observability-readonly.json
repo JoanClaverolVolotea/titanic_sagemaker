@@ -10,13 +10,39 @@
       "Resource": "*"
     },
     {
-      "Sid": "ReadOnlyOpsAcrossProjectServices",
+      "Sid": "GlobalReadOnlyOps",
       "Effect": "Allow",
       "Action": [
         "s3:ListAllMyBuckets",
         "s3:GetBucketLocation",
         "s3:ListBucket",
         "s3:GetObject",
+        "ce:GetCostAndUsage",
+        "ce:GetCostForecast",
+        "ce:GetDimensionValues",
+        "ce:GetReservationUtilization",
+        "ce:GetRightsizingRecommendation",
+        "ce:GetSavingsPlansUtilization",
+        "ce:GetTags",
+        "budgets:ViewBudget",
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues",
+        "iam:GetRole",
+        "iam:ListRoles",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:ListPolicies",
+        "iam:ListPolicyVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RegionalReadOnlyOpsEuWest1",
+      "Effect": "Allow",
+      "Action": [
         "ecr:DescribeRepositories",
         "ecr:DescribeImages",
         "ecr:ListImages",
@@ -52,28 +78,14 @@
         "logs:Get*",
         "logs:FilterLogEvents",
         "logs:StartQuery",
-        "logs:StopQuery",
-        "ce:GetCostAndUsage",
-        "ce:GetCostForecast",
-        "ce:GetDimensionValues",
-        "ce:GetReservationUtilization",
-        "ce:GetRightsizingRecommendation",
-        "ce:GetSavingsPlansUtilization",
-        "ce:GetTags",
-        "budgets:ViewBudget",
-        "tag:GetResources",
-        "tag:GetTagKeys",
-        "tag:GetTagValues",
-        "iam:GetRole",
-        "iam:ListRoles",
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListRolePolicies",
-        "iam:ListPolicies",
-        "iam:ListPolicyVersions"
+        "logs:StopQuery"
       ],
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
     }
   ]
 }

@@ -6,10 +6,10 @@
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": [
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-terraform-deployer-dev",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-terraform-deployer-prod",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-readonly-dev",
-        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-readonly-prod"
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-dev",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-prod",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-readonly-dev",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-readonly-prod"
       ],
       "Condition": {
         "Bool": {
