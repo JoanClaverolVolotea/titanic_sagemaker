@@ -5,6 +5,10 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 
 ## Decisiones tecnicas y alternativas descartadas
 - Endpoint update solo con modelo validado/registrado.
+- Estrategia de despliegue:
+  - desplegar primero a endpoint `staging`,
+  - correr smoke tests,
+  - promover a endpoint `prod` solo con gate manual.
 - ECS opcional para API o integracion adicional.
 - Alternativas descartadas: update directo sin gate.
 
@@ -16,11 +20,17 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 ## Comandos ejecutados y resultado esperado
 - Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform plan` del modulo de serving
-- Smoke tests de inferencia
-- Resultado esperado: endpoint estable y respuesta valida.
+- Deploy de endpoint `staging` con modelo registrado
+- Smoke tests de inferencia sobre `staging`
+- Deploy a `prod` solo tras aprobacion manual
+- Resultado esperado: `staging` y `prod` estables, respuesta valida y rollout controlado.
 
 ## Evidencia
-Agregar endpoint name/ARN, resultados de smoke test y latencia base.
+Agregar:
+- Endpoint names/ARN de `staging` y `prod`.
+- Resultados de smoke tests en `staging`.
+- Evidencia de aprobacion manual para despliegue a `prod`.
+- Latencia base y tasa de error inicial.
 
 ## Riesgos/pendientes
 - Sobreaprovisionamiento de instancias.

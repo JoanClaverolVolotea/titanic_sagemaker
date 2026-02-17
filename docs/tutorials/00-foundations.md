@@ -7,6 +7,7 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
 - IaC estandar: Terraform.
 - CI/CD estandar: GitHub Actions.
 - Ambientes: `dev` y `prod`.
+- Arquitectura objetivo: ModelBuild CI (preprocess/train/evaluate/register) + ModelDeploy CD (staging/manual approval/prod).
 - Alternativas descartadas: despliegues manuales sin pipeline.
 
 ## IAM usado (roles/policies/permisos clave)
@@ -23,6 +24,12 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
 - `terraform validate`
 - `terraform plan`
 - Resultado esperado: plan limpio y recursos con tags obligatorios.
+
+## Entregable minimo de esta fase
+- Checklist de arquitectura aprobado con estos bloques:
+  - SageMaker Pipeline con pasos de `Processing -> Training -> Evaluation -> Register`.
+  - Model Registry obligatorio antes de cualquier deployment.
+  - Pipeline de despliegue con endpoint `staging`, gate manual y despliegue a `prod`.
 
 ## Evidencia
 Agregar aqui salidas de plan, decisiones de backend state y convenciones aprobadas.

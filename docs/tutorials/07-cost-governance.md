@@ -7,6 +7,7 @@ Controlar costo y riesgo operativo desde el disenio hasta la operacion diaria.
 - Budgets y alertas por entorno.
 - Scheduler para apagar recursos no prod cuando aplique.
 - Tagging obligatorio para trazabilidad financiera.
+- Controlar costo de endpoints `staging`/`prod` y ejecuciones programadas del pipeline.
 
 ## IAM usado (roles/policies/permisos clave)
 - Permisos de lectura de costos y presupuesto para operador DS.

@@ -6,6 +6,10 @@ Asegurar operacion con logs, metricas, alarmas y runbooks para incidentes.
 ## Decisiones tecnicas y alternativas descartadas
 - CloudWatch Logs centralizado por servicio.
 - Alarmas para fallos de training/pipeline/endpoint/costo.
+- Monitoreo obligatorio de:
+  - ejecuciones de SageMaker Pipeline (processing/training/evaluation/register),
+  - despliegues `staging` y `prod`,
+  - errores de smoke tests en fase de promotion.
 - Alternativas descartadas: monitoreo ad-hoc sin umbrales.
 
 ## IAM usado (roles/policies/permisos clave)

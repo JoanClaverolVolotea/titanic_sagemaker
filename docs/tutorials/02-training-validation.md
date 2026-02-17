@@ -6,6 +6,7 @@ Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
 ## Decisiones tecnicas y alternativas descartadas
 - Definir split train/validation reproducible.
 - Definir metrica principal para aprobacion de modelo.
+- Definir umbral de promocion (ejemplo: `accuracy >= 0.78` en validation).
 - Alternativas descartadas: despliegue sin validacion cuantitativa.
 
 ## IAM usado (roles/policies/permisos clave)
@@ -16,10 +17,18 @@ Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
 - Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform plan` del modulo de entrenamiento
 - Trigger de training job
-- Resultado esperado: job exitoso, metricas persistidas.
+- Ejecutar evaluacion con validation set
+- Resultado esperado:
+  - training job exitoso,
+  - metricas persistidas (`accuracy`, `f1`, `precision`, `recall`),
+  - decision binaria de promocion (`pass`/`fail`) para la fase de registry.
 
 ## Evidencia
-Agregar Job ARN, metricas finales y ubicacion del modelo generado.
+Agregar:
+- Job ARN.
+- Metricas finales en validation.
+- Umbral aplicado y resultado (`pass`/`fail`).
+- Ubicacion S3 del modelo generado.
 
 ## Riesgos/pendientes
 - Drift entre dataset usado y dataset versionado.
