@@ -11,8 +11,10 @@ Asegurar operacion con logs, metricas, alarmas y runbooks para incidentes.
 ## IAM usado (roles/policies/permisos clave)
 - Permisos de lectura operativa para DS.
 - Permisos de escritura de logs para workloads.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - Validacion de alarmas y dashboards
 - Prueba de alertas
 - Resultado esperado: visibilidad completa del flujo E2E.

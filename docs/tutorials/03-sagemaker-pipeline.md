@@ -10,8 +10,10 @@ Construir pipeline de SageMaker para procesamiento, entrenamiento, evaluacion y 
 
 ## IAM usado (roles/policies/permisos clave)
 - Permisos para crear/ejecutar pipeline y registrar modelos.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform plan` del modulo de pipeline
 - Ejecucion del pipeline
 - Resultado esperado: pipeline completo y modelo en registry.

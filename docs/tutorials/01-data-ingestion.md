@@ -11,8 +11,10 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
 ## IAM usado (roles/policies/permisos clave)
 - Permisos S3 acotados por bucket/prefix.
 - Acceso de lectura para entrenamiento y escritura para outputs.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `aws s3 ls`
 - `terraform plan` del modulo de datos
 - Resultado esperado: bucket/prefix listos y acceso validado.

@@ -10,8 +10,10 @@ Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
 
 ## IAM usado (roles/policies/permisos clave)
 - SageMaker execution role con acceso minimo a S3/ECR/CloudWatch.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform plan` del modulo de entrenamiento
 - Trigger de training job
 - Resultado esperado: job exitoso, metricas persistidas.

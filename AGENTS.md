@@ -58,6 +58,16 @@ Si hay error o incidente, el agente debe reportar:
 3. Correccion aplicada o recomendada.
 4. Control preventivo para no repetirlo.
 
+## Regla Global para Agentes LLM (AWS Identity)
+
+Toda operacion AWS ejecutada por agentes LLM en este proyecto debe usar:
+- Identidad base: `data-science-user`
+- Perfiles operativos: `data-science-user-dev` y `data-science-user-prod`
+
+Prohibido:
+- Usar root account para operaciones del proyecto.
+- Usar otros usuarios IAM humanos distintos de `data-science-user`.
+
 ## Roles de Mentoria
 
 ### 1. Arquitecto de Infraestructura (Terraform/AWS)
@@ -183,6 +193,23 @@ Principio: separar identidad humana de roles de ejecucion.
   - leer logs/metricas
   - consultar estado de recursos
   - asumir roles acotados por entorno
+
+### Credenciales estandar del operador DS
+
+- IAM User oficial: `data-science-user`
+- Nombres logicos de access keys:
+  - `data-science-user-primary` (activa)
+  - `data-science-user-rotation` (reserva para rotacion)
+- Perfiles AWS CLI oficiales:
+  - `data-science-user`
+  - `data-science-user-dev`
+  - `data-science-user-prod`
+
+Reglas obligatorias:
+1. Nunca commitear `AccessKeyId` o `SecretAccessKey` reales.
+2. Operar por entorno con assume-role (`data-science-user-dev`/`data-science-user-prod`) y no con la key base directa.
+3. Mantener maximo 2 access keys por usuario y documentar la rotacion en `docs/iterations/`.
+4. Toda operacion AWS (CLI, SDK, Terraform, scripts) debe originarse en `data-science-user` como identidad principal.
 
 ### Roles de workload (servicios)
 

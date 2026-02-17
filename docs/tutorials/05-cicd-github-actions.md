@@ -11,8 +11,10 @@ Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
 ## IAM usado (roles/policies/permisos clave)
 - OIDC o credenciales seguras para GitHub Actions.
 - Roles por entorno con permisos minimos y `PassRole` restringido.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - Ejecucion de workflows en PR y main
 - Resultado esperado: gates aplicados y despliegue reproducible.
 

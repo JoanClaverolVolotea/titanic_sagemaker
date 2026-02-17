@@ -11,8 +11,10 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 ## IAM usado (roles/policies/permisos clave)
 - SageMaker endpoint roles.
 - ECS task execution/task role con permisos minimos.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform plan` del modulo de serving
 - Smoke tests de inferencia
 - Resultado esperado: endpoint estable y respuesta valida.

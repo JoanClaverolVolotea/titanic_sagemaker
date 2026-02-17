@@ -11,8 +11,10 @@ Controlar costo y riesgo operativo desde el disenio hasta la operacion diaria.
 ## IAM usado (roles/policies/permisos clave)
 - Permisos de lectura de costos y presupuesto para operador DS.
 - Permisos acotados para scheduler y acciones de stop/start.
+- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - Configuracion de budgets/alerts
 - Validacion de schedules de apagado
 - Resultado esperado: costo dentro de umbrales definidos.

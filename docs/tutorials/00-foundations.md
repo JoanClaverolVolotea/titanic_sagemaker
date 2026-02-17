@@ -11,10 +11,14 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
 
 ## IAM usado (roles/policies/permisos clave)
 - Usuario operador DS con permisos minimos para ejecutar pipelines y leer observabilidad.
+- Usuario IAM oficial: `data-science-user`.
+- Access keys logicas del usuario: `data-science-user-primary` (activa) y `data-science-user-rotation` (reserva).
+- Perfiles AWS CLI oficiales: `data-science-user`, `data-science-user-dev`, `data-science-user-prod`.
 - Roles de ejecucion por servicio (SageMaker, Lambda, Step Functions, ECS).
 - `iam:PassRole` restringido a roles esperados.
 
 ## Comandos ejecutados y resultado esperado
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
 - `terraform fmt -check`
 - `terraform validate`
 - `terraform plan`

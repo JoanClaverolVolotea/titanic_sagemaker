@@ -13,3 +13,12 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 
 Iteraciones historicas:
 - `docs/iterations/`
+
+Convencion de credenciales para todos los tutoriales:
+- IAM user: `data-science-user`
+- Access keys logicas: `data-science-user-primary` y `data-science-user-rotation`
+- Perfiles AWS CLI: `data-science-user`, `data-science-user-dev`, `data-science-user-prod`
+
+Regla global de ejecucion AWS:
+- Toda operacion AWS del proyecto debe ejecutarse desde `data-science-user` como identidad principal.
+- Para trabajo por entorno usar `data-science-user-dev` (dev) y `data-science-user-prod` (prod).
