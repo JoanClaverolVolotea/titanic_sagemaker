@@ -13,6 +13,7 @@ Permitir que el usuario operador de Data Science pueda:
 - `02-ds-assume-environment-roles.json`: `sts:AssumeRole` a roles de entorno.
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
+- `05-ds-policy-administration.json`: permisos IAM bootstrap para que `data-science-user` pueda ejecutar el script de ensure (gestionar versions/attachments de policies).
 
 ## Cuenta y region
 Esta version ya usa:
@@ -38,7 +39,7 @@ Nota: AWS genera el `AccessKeyId` real automaticamente (formato `AKIA...`).
 Los nombres `data-science-user-primary` y `data-science-user-rotation` son etiquetas operativas para documentacion y almacenamiento seguro.
 
 ## Aplicar politicas correctas por AWS Console (browser)
-Usa este flujo en la consola web para crear/actualizar las 4 politicas y asignarlas al usuario `data-science-user`.
+Usa este flujo en la consola web para crear/actualizar las politicas y asignarlas al usuario `data-science-user`.
 
 ### 1) Confirmar cuenta y usuario
 1. Inicia sesion en AWS Console con la cuenta `939122281183`.
@@ -58,15 +59,16 @@ Usa este flujo en la consola web para crear/actualizar las 4 politicas y asignar
    - `rotation` activa solo durante ventana de rotacion o cuando reemplaces la primaria.
 5. Nunca guardar secretos en el repositorio.
 
-### 3) Crear o actualizar las 4 politicas administradas
+### 3) Crear o actualizar las politicas administradas
 Politicas esperadas y archivo fuente:
 
 | Policy name | JSON source |
 | --- | --- |
-| `titanic-ds-observability-readonly` | `docs/aws/policies/01-ds-observability-readonly.json` |
-| `titanic-ds-assume-environment-roles` | `docs/aws/policies/02-ds-assume-environment-roles.json` |
-| `titanic-ds-passrole-restricted` | `docs/aws/policies/03-ds-passrole-restricted.json` |
-| `titanic-ds-s3-data-access` | `docs/aws/policies/04-ds-s3-data-access.json` |
+| `DataScienceAssumeEnvironmentRoles` | `docs/aws/policies/02-ds-assume-environment-roles.json` |
+| `DataScienceObservabilityReadOnly` | `docs/aws/policies/01-ds-observability-readonly.json` |
+| `DataSciencePassroleRestricted` | `docs/aws/policies/03-ds-passrole-restricted.json` |
+| `DataSciences3DataAccess` | `docs/aws/policies/04-ds-s3-data-access.json` |
+| `DataSciencePolicyAdministration` | `docs/aws/policies/05-ds-policy-administration.json` |
 
 Para cada politica:
 1. Ve a `IAM > Policies`.
@@ -82,16 +84,18 @@ Para cada politica:
 
 Nota: IAM es un servicio global, pero esta documentacion asume operacion en `eu-west-1` por la condicion `aws:RequestedRegion` incluida en observabilidad.
 
-### 4) Adjuntar las 4 politicas al usuario `data-science-user`
+### 4) Adjuntar politicas al usuario `data-science-user`
 1. Ve a `IAM > Users > data-science-user`.
 2. `Add permissions`.
 3. Selecciona `Attach policies directly`.
-4. Busca y marca estas 4 politicas:
-   - `titanic-ds-observability-readonly`
-   - `titanic-ds-assume-environment-roles`
-   - `titanic-ds-passrole-restricted`
-   - `titanic-ds-s3-data-access`
-5. `Next` -> `Add permissions`.
+4. Busca y marca estas politicas base:
+   - `DataScienceAssumeEnvironmentRoles`
+   - `DataScienceObservabilityReadOnly`
+   - `DataSciencePassroleRestricted`
+   - `DataSciences3DataAccess`
+5. Si vas a usar `scripts/ensure_ds_policies.sh`, marca tambien:
+   - `DataSciencePolicyAdministration`
+6. `Next` -> `Add permissions`.
 
 ### 5) Configurar perfiles AWS CLI con `aws configure`
 Usa la key `data-science-user-primary` en el perfil base `data-science-user` y asume roles por entorno.
@@ -137,18 +141,37 @@ role_session_name = data-science-user-prod-session
 ```
 
 ### 6) Validar en la consola y por CLI
-1. En `IAM > Users > data-science-user > Permissions`, confirma que las 4 politicas estan adjuntas.
-2. Abre `IAM Policy Simulator`.
-3. Selecciona el usuario `data-science-user`.
-4. Simula al menos estas acciones:
+1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 4 politicas base.
+2. Si usas el script de ensure, confirma tambien `DataSciencePolicyAdministration`.
+3. Abre `IAM Policy Simulator`.
+4. Selecciona el usuario `data-science-user`.
+5. Simula al menos estas acciones:
    - `sts:AssumeRole`
    - `iam:PassRole`
    - `cloudwatch:GetMetricData`
    - `s3:PutObject`
-5. Configura el contexto de simulacion con region `eu-west-1` para validar reglas con `aws:RequestedRegion`.
-6. Prueba perfiles locales:
+6. Configura el contexto de simulacion con region `eu-west-1` para validar reglas con `aws:RequestedRegion`.
+7. Prueba perfiles locales:
    - `aws sts get-caller-identity --profile data-science-user-dev`
    - `aws sts get-caller-identity --profile data-science-user-prod`
+
+## Alternativa automatizada (script)
+Si prefieres aplicar/verificar todo en un solo paso desde terminal:
+
+```bash
+# Desde la raiz del repo
+AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --apply
+
+# Solo validacion (sin cambios en AWS)
+AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
+```
+
+El script:
+- Verifica cuenta, usuario y JSON locales.
+- Crea/actualiza las 4 policies base (versionado IAM).
+- Adjunta policies base faltantes al usuario.
+- Requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario.
+- Falla si no se ejecuta con perfil `data-science-user`.
 
 ## Notas de seguridad
 - El flujo recomendado es que el usuario humano asuma roles de workload/deploy en vez de operar todo con permisos directos.
