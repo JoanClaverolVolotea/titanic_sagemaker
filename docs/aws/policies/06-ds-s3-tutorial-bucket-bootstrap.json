@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateAndConfigureTutorialBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-use"
+    },
+    {
+      "Sid": "ListTutorialBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-use"
+    },
+    {
+      "Sid": "ReadWriteTutorialBucketObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-use/*"
+    }
+  ]
+}

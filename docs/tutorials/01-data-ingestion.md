@@ -3,6 +3,22 @@
 ## Objetivo y contexto
 Implementar carga y versionado de datos Titanic en S3, con separacion de raw, curated y artefactos.
 
+## Paso a paso (ejecucion)
+1. Preparar rutas locales de datos:
+   - `data/titanic/raw/`
+   - `data/titanic/splits/`
+2. Descargar dataset fuente Titanic:
+   - `curl -fsSL https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv -o data/titanic/raw/titanic.csv`
+3. Generar split reproducible train/validation:
+   - `python3 scripts/prepare_titanic_splits.py`
+4. Validar conteos de filas:
+   - `wc -l data/titanic/raw/titanic.csv data/titanic/splits/train.csv data/titanic/splits/validation.csv`
+5. Subir datos a S3 en `dev`:
+   - `aws s3 cp data/titanic/raw/titanic.csv s3://<titanic-data-bucket-dev>/raw/titanic.csv --profile data-science-user`
+   - `aws s3 cp data/titanic/splits/train.csv s3://<titanic-data-bucket-dev>/curated/train.csv --profile data-science-user`
+   - `aws s3 cp data/titanic/splits/validation.csv s3://<titanic-data-bucket-dev>/curated/validation.csv --profile data-science-user`
+6. Verificar lectura de objetos en S3 por prefijo `raw/` y `curated/`.
+
 ## Decisiones tecnicas y alternativas descartadas
 - Estructura S3 por entorno (`dev`/`prod`).
 - Convencion de paths para train/validation.
@@ -18,7 +34,7 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
 - Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
 - Descargar dataset Titanic:
   - `curl -fsSL https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv -o data/titanic/raw/titanic.csv`
 - Generar split reproducible:
@@ -26,9 +42,9 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
 - Validar volumen de datos:
   - `wc -l data/titanic/raw/titanic.csv data/titanic/splits/train.csv data/titanic/splits/validation.csv`
 - Subir a S3 (dev):
-  - `aws s3 cp data/titanic/raw/titanic.csv s3://<titanic-data-bucket-dev>/raw/titanic.csv --profile data-science-user-dev`
-  - `aws s3 cp data/titanic/splits/train.csv s3://<titanic-data-bucket-dev>/curated/train.csv --profile data-science-user-dev`
-  - `aws s3 cp data/titanic/splits/validation.csv s3://<titanic-data-bucket-dev>/curated/validation.csv --profile data-science-user-dev`
+  - `aws s3 cp data/titanic/raw/titanic.csv s3://<titanic-data-bucket-dev>/raw/titanic.csv --profile data-science-user`
+  - `aws s3 cp data/titanic/splits/train.csv s3://<titanic-data-bucket-dev>/curated/train.csv --profile data-science-user`
+  - `aws s3 cp data/titanic/splits/validation.csv s3://<titanic-data-bucket-dev>/curated/validation.csv --profile data-science-user`
 - Resultado esperado: datos raw y splits versionados en S3 para alimentar Processing/Training/Evaluation.
 
 ## Evidencia
@@ -36,6 +52,11 @@ Agregar:
 - Conteo de filas final de raw/train/validation.
 - Rutas S3 finales (`raw/`, `curated/`).
 - Prueba de lectura/escritura por rol.
+
+## Criterio de cierre
+- `train.csv` y `validation.csv` generados localmente de forma deterministica.
+- Dataset fuente y splits cargados en S3 `dev`.
+- Prefijos de datos listos para los jobs de processing/training/evaluation.
 
 ## Riesgos/pendientes
 - Politicas demasiado amplias en S3.

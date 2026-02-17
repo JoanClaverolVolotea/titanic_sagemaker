@@ -20,6 +20,7 @@ POLICY_NAMES=(
   "DataScienceAssumeEnvironmentRoles"
   "DataSciencePassroleRestricted"
   "DataSciences3DataAccess"
+  "DataScienceS3TutorialBucketBootstrap"
 )
 
 POLICY_FILES=(
@@ -27,6 +28,7 @@ POLICY_FILES=(
   "${POLICY_DIR}/02-ds-assume-environment-roles.json"
   "${POLICY_DIR}/03-ds-passrole-restricted.json"
   "${POLICY_DIR}/04-ds-s3-data-access.json"
+  "${POLICY_DIR}/06-ds-s3-tutorial-bucket-bootstrap.json"
 )
 
 usage() {
@@ -35,7 +37,7 @@ Usage:
   scripts/ensure_ds_policies.sh [--apply|--check]
 
 Description:
-  Ensures the 4 project IAM managed policies exist (create/update) and are
+  Ensures the 5 project IAM managed policies exist (create/update) and are
   attached to user data-science-user. Uses AWS_PROFILE=data-science-user by
   default.
 

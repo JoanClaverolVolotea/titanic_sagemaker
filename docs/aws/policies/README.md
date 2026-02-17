@@ -5,7 +5,7 @@ Este directorio contiene politicas IAM listas para crear y asignar al usuario qu
 ## Objetivo
 Permitir que el usuario operador de Data Science pueda:
 - Ver estado de recursos, logs, metricas y costos.
-- Asumir roles de ejecucion por ambiente (`dev` y `prod`).
+- Operar recursos de ambientes `dev` y `prod` con un perfil AWS unico.
 - Ejecutar operaciones que requieren `iam:PassRole` sin usar comodines globales.
 
 ## Politicas incluidas
@@ -14,6 +14,7 @@ Permitir que el usuario operador de Data Science pueda:
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
 - `05-ds-policy-administration.json`: permisos IAM bootstrap para que `data-science-user` pueda ejecutar el script de ensure (gestionar versions/attachments de policies).
+- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos minimos para crear y operar el bucket de tutorial `titanic-data-bucket-939122281183-data-science-use`.
 
 ## Cuenta y region
 Esta version ya usa:
@@ -30,10 +31,7 @@ Definicion oficial para este proyecto:
 - IAM User: `data-science-user`
 - Access key logica activa: `data-science-user-primary`
 - Access key logica de rotacion: `data-science-user-rotation`
-- Nombre de perfiles AWS CLI:
-  - `data-science-user` (perfil base con access key activa)
-  - `data-science-user-dev` (asume rol dev)
-  - `data-science-user-prod` (asume rol prod)
+- Perfil AWS CLI oficial (unico): `data-science-user`
 
 Nota: AWS genera el `AccessKeyId` real automaticamente (formato `AKIA...`).  
 Los nombres `data-science-user-primary` y `data-science-user-rotation` son etiquetas operativas para documentacion y almacenamiento seguro.
@@ -69,6 +67,7 @@ Politicas esperadas y archivo fuente:
 | `DataSciencePassroleRestricted` | `docs/aws/policies/03-ds-passrole-restricted.json` |
 | `DataSciences3DataAccess` | `docs/aws/policies/04-ds-s3-data-access.json` |
 | `DataSciencePolicyAdministration` | `docs/aws/policies/05-ds-policy-administration.json` |
+| `DataScienceS3TutorialBucketBootstrap` | `docs/aws/policies/06-ds-s3-tutorial-bucket-bootstrap.json` |
 
 Para cada politica:
 1. Ve a `IAM > Policies`.
@@ -93,27 +92,18 @@ Nota: IAM es un servicio global, pero esta documentacion asume operacion en `eu-
    - `DataScienceObservabilityReadOnly`
    - `DataSciencePassroleRestricted`
    - `DataSciences3DataAccess`
+   - `DataScienceS3TutorialBucketBootstrap` (requerida para crear/subir al bucket `titanic-data-bucket-939122281183-data-science-use`)
 5. Si vas a usar `scripts/ensure_ds_policies.sh`, marca tambien:
    - `DataSciencePolicyAdministration`
 6. `Next` -> `Add permissions`.
 
-### 5) Configurar perfiles AWS CLI con `aws configure`
-Usa la key `data-science-user-primary` en el perfil base `data-science-user` y asume roles por entorno.
+### 5) Configurar perfil AWS CLI unico con `aws configure`
+Usa la key `data-science-user-primary` en el perfil `data-science-user`.
 
 ```bash
 aws configure --profile data-science-user
 aws configure set region eu-west-1 --profile data-science-user
 aws configure set output json --profile data-science-user
-
-aws configure set region eu-west-1 --profile data-science-user-dev
-aws configure set role_arn arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-dev --profile data-science-user-dev
-aws configure set source_profile data-science-user --profile data-science-user-dev
-aws configure set role_session_name data-science-user-dev-session --profile data-science-user-dev
-
-aws configure set region eu-west-1 --profile data-science-user-prod
-aws configure set role_arn arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-prod --profile data-science-user-prod
-aws configure set source_profile data-science-user --profile data-science-user-prod
-aws configure set role_session_name data-science-user-prod-session --profile data-science-user-prod
 ```
 
 Resultado esperado en archivos AWS:
@@ -127,21 +117,13 @@ aws_secret_access_key = <SECRET_ACCESS_KEY_PRIMARY>
 
 ```ini
 # ~/.aws/config
-[profile data-science-user-dev]
+[profile data-science-user]
 region = eu-west-1
-source_profile = data-science-user
-role_arn = arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-dev
-role_session_name = data-science-user-dev-session
-
-[profile data-science-user-prod]
-region = eu-west-1
-source_profile = data-science-user
-role_arn = arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-prod
-role_session_name = data-science-user-prod-session
+output = json
 ```
 
 ### 6) Validar en la consola y por CLI
-1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 4 politicas base.
+1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 5 politicas operativas (incluyendo `DataScienceS3TutorialBucketBootstrap`).
 2. Si usas el script de ensure, confirma tambien `DataSciencePolicyAdministration`.
 3. Abre `IAM Policy Simulator`.
 4. Selecciona el usuario `data-science-user`.
@@ -151,9 +133,9 @@ role_session_name = data-science-user-prod-session
    - `cloudwatch:GetMetricData`
    - `s3:PutObject`
 6. Configura el contexto de simulacion con region `eu-west-1` para validar reglas con `aws:RequestedRegion`.
-7. Prueba perfiles locales:
-   - `aws sts get-caller-identity --profile data-science-user-dev`
-   - `aws sts get-caller-identity --profile data-science-user-prod`
+7. Prueba perfil local:
+   - `aws sts get-caller-identity --profile data-science-user`
+   - `aws configure list --profile data-science-user`
 
 ## Alternativa automatizada (script)
 Si prefieres aplicar/verificar todo en un solo paso desde terminal:
@@ -168,7 +150,7 @@ AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
 
 El script:
 - Verifica cuenta, usuario y JSON locales.
-- Crea/actualiza las 4 policies base (versionado IAM).
+- Crea/actualiza las 5 policies operativas (versionado IAM).
 - Adjunta policies base faltantes al usuario.
 - Requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario.
 - Falla si no se ejecuta con perfil `data-science-user`.

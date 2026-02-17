@@ -3,6 +3,19 @@
 ## Objetivo y contexto
 Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
 
+## Paso a paso (ejecucion)
+1. Confirmar rutas S3 de `train.csv` y `validation.csv` (salida de fase 01).
+2. Definir metrica principal y umbral de promocion (ejemplo `accuracy >= 0.78`).
+3. Validar infraestructura del modulo de entrenamiento:
+   - `terraform fmt -check`
+   - `terraform validate`
+   - `terraform plan`
+4. Ejecutar training job en SageMaker con perfil `data-science-user`.
+5. Ejecutar evaluacion sobre validation set.
+6. Persistir metricas y emitir decision binaria de calidad:
+   - `pass`: candidato a registro,
+   - `fail`: volver a iterar en datos/modelo.
+
 ## Decisiones tecnicas y alternativas descartadas
 - Definir split train/validation reproducible.
 - Definir metrica principal para aprobacion de modelo.
@@ -14,7 +27,7 @@ Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
 - Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
 - `terraform plan` del modulo de entrenamiento
 - Trigger de training job
 - Ejecutar evaluacion con validation set
@@ -29,6 +42,11 @@ Agregar:
 - Metricas finales en validation.
 - Umbral aplicado y resultado (`pass`/`fail`).
 - Ubicacion S3 del modelo generado.
+
+## Criterio de cierre
+- Training job finalizado en estado exitoso.
+- Metricas de validacion almacenadas y trazables.
+- Existe decision de promocion documentada (`pass`/`fail`).
 
 ## Riesgos/pendientes
 - Drift entre dataset usado y dataset versionado.

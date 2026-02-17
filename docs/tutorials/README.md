@@ -11,6 +11,21 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 7. `docs/tutorials/06-observability-operations.md`
 8. `docs/tutorials/07-cost-governance.md`
 
+## How to run this roadmap step by step
+1. Completa `00-foundations.md` y valida identidad/perfil + base Terraform.
+2. Ejecuta `01-data-ingestion.md` y deja `raw/train/validation` en S3.
+3. Ejecuta `02-training-validation.md` y documenta umbral + resultado `pass/fail`.
+4. Ejecuta `03-sagemaker-pipeline.md` y registra modelo en Model Registry.
+5. Ejecuta `04-serving-ecs-sagemaker.md` con despliegue `staging -> approval -> prod`.
+6. Automatiza el flujo con `05-cicd-github-actions.md`.
+7. Cierra operación con `06-observability-operations.md`.
+8. Cierra gobierno de costos con `07-cost-governance.md`.
+
+Criterio global de finalizacion:
+- Existe ejecución reproducible de punta a punta.
+- Hay trazabilidad desde commit hasta modelo en registry y endpoint en `prod`.
+- Hay evidencia operativa y de costo registrada en `docs/iterations/`.
+
 ## End-to-End process (Mermaid)
 
 ```mermaid
@@ -70,8 +85,8 @@ Iteraciones historicas:
 Convencion de credenciales para todos los tutoriales:
 - IAM user: `data-science-user`
 - Access keys logicas: `data-science-user-primary` y `data-science-user-rotation`
-- Perfiles AWS CLI: `data-science-user`, `data-science-user-dev`, `data-science-user-prod`
+- Perfil AWS CLI: `data-science-user`
 
 Regla global de ejecucion AWS:
 - Toda operacion AWS del proyecto debe ejecutarse desde `data-science-user` como identidad principal.
-- Para trabajo por entorno usar `data-science-user-dev` (dev) y `data-science-user-prod` (prod).
+- Para trabajo por entorno mantener el mismo perfil `data-science-user` y cambiar solo recursos/variables de entorno.

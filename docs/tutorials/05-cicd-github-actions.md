@@ -3,6 +3,24 @@
 ## Objetivo y contexto
 Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
 
+## Paso a paso (ejecucion)
+1. Definir workflow `model-build.yml`:
+   - lint/test/security,
+   - `terraform fmt/validate/plan`,
+   - ejecución de SageMaker Pipeline.
+2. Definir workflow `model-deploy.yml`:
+   - deploy `staging`,
+   - smoke tests,
+   - aprobación manual,
+   - deploy `prod`.
+3. Configurar `GitHub Environments` con protección de aprobación para `prod`.
+4. Configurar autenticación AWS en Actions (OIDC recomendado).
+5. Ejecutar corrida de prueba:
+   - PR -> validar checks y plan,
+   - merge a main -> build/deploy en `dev`,
+   - promoción manual -> despliegue `prod`.
+6. Confirmar trazabilidad completa entre commit -> model package -> endpoints.
+
 ## Decisiones tecnicas y alternativas descartadas
 - PR: checks obligatorios (lint/test/validate/plan/security).
 - `ModelBuild` pipeline: construir/validar y ejecutar SageMaker Pipeline para registrar modelo.
@@ -19,7 +37,7 @@ Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
 - Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
 - Ejecucion workflow `model-build.yml` en PR/main:
   - checks + terraform plan + trigger de SageMaker Pipeline.
 - Ejecucion workflow `model-deploy.yml`:
@@ -35,6 +53,11 @@ Agregar:
 - Plan/apply por entorno.
 - Evidencia de aprobacion manual en release a `prod`.
 - Resultado de smoke tests de `staging`.
+
+## Criterio de cierre
+- `model-build.yml` y `model-deploy.yml` ejecutan sin errores.
+- Existen gates de aprobación para `prod`.
+- Se puede promover de `dev` a `prod` con evidencia completa.
 
 ## Riesgos/pendientes
 - Secretos mal gestionados.

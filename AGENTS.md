@@ -62,7 +62,7 @@ Si hay error o incidente, el agente debe reportar:
 
 Toda operacion AWS ejecutada por agentes LLM en este proyecto debe usar:
 - Identidad base: `data-science-user`
-- Perfiles operativos: `data-science-user-dev` y `data-science-user-prod`
+- Perfil operativo unico: `data-science-user`
 
 Prohibido:
 - Usar root account para operaciones del proyecto.
@@ -202,12 +202,10 @@ Principio: separar identidad humana de roles de ejecucion.
   - `data-science-user-rotation` (reserva para rotacion)
 - Perfiles AWS CLI oficiales:
   - `data-science-user`
-  - `data-science-user-dev`
-  - `data-science-user-prod`
 
 Reglas obligatorias:
 1. Nunca commitear `AccessKeyId` o `SecretAccessKey` reales.
-2. Operar por entorno con assume-role (`data-science-user-dev`/`data-science-user-prod`) y no con la key base directa.
+2. Operar todas las acciones AWS con el perfil `data-science-user`.
 3. Mantener maximo 2 access keys por usuario y documentar la rotacion en `docs/iterations/`.
 4. Toda operacion AWS (CLI, SDK, Terraform, scripts) debe originarse en `data-science-user` como identidad principal.
 

@@ -3,6 +3,17 @@
 ## Objetivo y contexto
 Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, capa de servicio en ECS/Fargate.
 
+## Paso a paso (ejecucion)
+1. Seleccionar `ModelPackage` aprobado desde Model Registry.
+2. Desplegar endpoint `staging` con ese modelo.
+3. Ejecutar smoke tests contra `staging` (salud, respuesta, latencia base).
+4. Revisar resultados de smoke tests:
+   - si falla: rollback/hold,
+   - si pasa: continuar.
+5. Ejecutar gate de aprobación manual.
+6. Desplegar endpoint `prod`.
+7. (Opcional) Exponer endpoint vía capa ECS/Fargate para consumo API.
+
 ## Decisiones tecnicas y alternativas descartadas
 - Endpoint update solo con modelo validado/registrado.
 - Estrategia de despliegue:
@@ -18,7 +29,7 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 - Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfiles `data-science-user-dev` (dev) o `data-science-user-prod` (prod).
+- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
 - `terraform plan` del modulo de serving
 - Deploy de endpoint `staging` con modelo registrado
 - Smoke tests de inferencia sobre `staging`
@@ -31,6 +42,11 @@ Agregar:
 - Resultados de smoke tests en `staging`.
 - Evidencia de aprobacion manual para despliegue a `prod`.
 - Latencia base y tasa de error inicial.
+
+## Criterio de cierre
+- Existe endpoint `staging` con smoke tests exitosos.
+- Gate manual ejecutado y documentado.
+- Endpoint `prod` desplegado con modelo trazable al registry.
 
 ## Riesgos/pendientes
 - Sobreaprovisionamiento de instancias.
