@@ -4,7 +4,8 @@
 Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, capa de servicio en ECS/Fargate.
 
 ## Paso a paso (ejecucion)
-1. Seleccionar `ModelPackage` aprobado desde Model Registry.
+1. Seleccionar `ModelPackage` de fase 03 en Model Registry.
+   - Si esta en `PendingManualApproval`, ejecutar aprobacion antes de promover a despliegue.
 2. Desplegar endpoint `staging` con ese modelo.
 3. Ejecutar smoke tests contra `staging` (salud, respuesta, latencia base).
 4. Revisar resultados de smoke tests:
@@ -16,6 +17,7 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 
 ## Decisiones tecnicas y alternativas descartadas
 - Endpoint update solo con modelo validado/registrado.
+- Consumir exclusivamente `ModelPackageArn` producido en fase 03 (sin bypass de registry).
 - Estrategia de despliegue:
   - desplegar primero a endpoint `staging`,
   - correr smoke tests,

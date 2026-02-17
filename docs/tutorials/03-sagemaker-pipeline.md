@@ -2,22 +2,30 @@
 
 ## Objetivo y contexto
 Construir pipeline de SageMaker para procesamiento, entrenamiento, evaluacion y registro de modelo.
+Esta fase convierte el ensayo manual de fase 02 en un flujo automatizado de `ModelBuild`.
 
 ## Paso a paso (ejecucion)
-1. Definir pipeline con 4 pasos obligatorios:
+1. Importar contrato de entrada desde fase 02:
+   - URIs `train_xgb.csv` y `validation_xgb.csv`,
+   - threshold de calidad `accuracy >= 0.78`,
+   - hiperparametros base validados.
+2. Definir pipeline con 4 pasos obligatorios:
    - `DataPreProcessing`
    - `TrainModel`
    - `ModelEvaluation`
    - `RegisterModel`
-2. Validar y planificar IaC del modulo de pipeline:
+3. Configurar condicion de registro:
+   - solo ejecutar `RegisterModel` cuando `ModelEvaluation` cumpla el umbral.
+   - registrar el paquete en `PendingManualApproval` para habilitar gate humano antes de deploy.
+4. Validar y planificar IaC del modulo de pipeline:
    - `terraform fmt -check`
    - `terraform validate`
    - `terraform plan`
-3. Publicar o actualizar definición del pipeline en SageMaker.
-4. Ejecutar `start-pipeline-execution` con input de datos de fase 01.
-5. Revisar estado de cada paso y logs asociados.
-6. Verificar que el modelo quedó en `SageMaker Model Registry` con metadatos de evaluación.
-7. Configurar trigger programado (EventBridge/Step Functions) para ejecuciones periódicas.
+5. Publicar o actualizar definición del pipeline en SageMaker.
+6. Ejecutar `start-pipeline-execution` con input de datos de fase 01/02.
+7. Revisar estado de cada paso y logs asociados.
+8. Verificar que el modelo quedó en `SageMaker Model Registry` con metadatos de evaluación.
+9. Configurar trigger programado (EventBridge/Step Functions) para ejecuciones periódicas.
 
 ## Decisiones tecnicas y alternativas descartadas
 - Pipeline declarativo con pasos versionados.
@@ -27,6 +35,8 @@ Construir pipeline de SageMaker para procesamiento, entrenamiento, evaluacion y 
   - `TrainModel` (SageMaker Training Job)
   - `ModelEvaluation` (SageMaker Processing Job)
   - `RegisterModel` (Model Registry)
+- `RegisterModel` condicionado por metricas para mantener paridad con el gate de calidad de fase 02.
+- `ModelApprovalStatus` inicial en `PendingManualApproval` para encadenar con el gate de despliegue.
 - Trigger por scheduler/orquestacion para ejecuciones periodicas.
 - Alternativas descartadas: jobs sueltos no orquestados.
 
@@ -41,8 +51,8 @@ Construir pipeline de SageMaker para procesamiento, entrenamiento, evaluacion y 
 - Ejecutar pipeline (`start-pipeline-execution`)
 - Resultado esperado:
   - pasos `DataPreProcessing`, `TrainModel`, `ModelEvaluation` completados,
-  - paquete de modelo registrado en `SageMaker Model Registry`,
-  - estado de aprobacion inicial controlado por criterio de validacion.
+  - registro condicional en `SageMaker Model Registry` cuando pase umbral,
+  - estado de aprobacion inicial `PendingManualApproval`.
 
 ## Evidencia
 Agregar:

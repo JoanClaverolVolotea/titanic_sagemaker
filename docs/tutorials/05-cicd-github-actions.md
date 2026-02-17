@@ -7,8 +7,9 @@ Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
 1. Definir workflow `model-build.yml`:
    - lint/test/security,
    - `terraform fmt/validate/plan`,
-   - ejecución de SageMaker Pipeline.
+   - ejecución de SageMaker Pipeline (`DataPreProcessing -> TrainModel -> ModelEvaluation -> RegisterModel`).
 2. Definir workflow `model-deploy.yml`:
+   - consumir `ModelPackageArn` aprobado en registry,
    - deploy `staging`,
    - smoke tests,
    - aprobación manual,
@@ -24,7 +25,7 @@ Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
 ## Decisiones tecnicas y alternativas descartadas
 - PR: checks obligatorios (lint/test/validate/plan/security).
 - `ModelBuild` pipeline: construir/validar y ejecutar SageMaker Pipeline para registrar modelo.
-- `ModelDeploy` pipeline: desplegar `staging`, ejecutar smoke tests y promover a `prod` con aprobacion manual.
+- `ModelDeploy` pipeline: consumir paquete del registry, desplegar `staging`, ejecutar smoke tests y promover a `prod` con aprobacion manual.
 - Merge a main: deploy a `dev` + smoke tests.
 - Promocion a `prod`: aprobacion manual via GitHub Environment protection rules.
 - Equivalencia con arquitectura de referencia:

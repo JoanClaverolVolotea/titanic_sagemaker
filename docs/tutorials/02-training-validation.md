@@ -1,56 +1,229 @@
 # 02 Training and Validation
 
 ## Objetivo y contexto
-Entrenar modelo con Titanic y validar metricas para definir umbral de promocion.
+Entrenar un modelo binario (`Survived`) en SageMaker y emitir una decision objetiva
+`pass/fail` usando el validation set.
+
+Resultado minimo esperado al cerrar esta fase:
+1. Un `TrainingJobArn` exitoso.
+2. Predicciones sobre validation generadas por Batch Transform.
+3. `metrics.json` con `accuracy`, `precision`, `recall`, `f1`.
+4. `promotion_decision.json` con `pass` o `fail`.
+
+## Alineacion con la arquitectura de referencia (imagen)
+Esta fase es un ensayo manual de la parte central de `ModelBuild` para validar
+dataset, features, hiperparametros y umbral antes de codificar el pipeline de la fase 03.
+
+Mapeo directo:
+1. Preparar `train_xgb/validation_xgb` -> equivalente funcional de `DataPreProcessing`.
+2. Crear Training Job -> `TrainModel`.
+3. Batch Transform + calculo de metricas -> equivalente funcional de `ModelEvaluation`.
+4. `promotion_decision.json` -> gate de calidad previo a `RegisterModel`.
+
+Fuera de alcance en esta fase:
+- `RegisterModel` en Model Registry (se ejecuta en fase 03).
+- Despliegue `staging/prod` (se ejecuta en fase 04/05).
+
+## Prerequisitos concretos
+1. Dataset de fase 01 cargado en S3:
+   - `s3://titanic-data-bucket-939122281183-data-science-use/curated/train.csv`
+   - `s3://titanic-data-bucket-939122281183-data-science-use/curated/validation.csv`
+2. Perfil AWS CLI operativo: `data-science-user`.
+3. Un SageMaker execution role existente con permisos a:
+   - leer/escribir en el bucket del proyecto,
+   - ejecutar Training/Model/Transform jobs,
+   - escribir logs en CloudWatch.
 
 ## Paso a paso (ejecucion)
-1. Confirmar rutas S3 de `train.csv` y `validation.csv` (salida de fase 01).
-2. Definir metrica principal y umbral de promocion (ejemplo `accuracy >= 0.78`).
-3. Validar infraestructura del modulo de entrenamiento:
-   - `terraform fmt -check`
-   - `terraform validate`
-   - `terraform plan`
-4. Ejecutar training job en SageMaker con perfil `data-science-user`.
-5. Ejecutar evaluacion sobre validation set.
-6. Persistir metricas y emitir decision binaria de calidad:
-   - `pass`: candidato a registro,
-   - `fail`: volver a iterar en datos/modelo.
+1. Definir variables del run:
+
+```bash
+export AWS_PROFILE=data-science-user
+export AWS_REGION=eu-west-1
+export DATA_BUCKET=titanic-data-bucket-939122281183-data-science-use
+
+export TRAIN_RAW_S3_URI=s3://$DATA_BUCKET/curated/train.csv
+export VALIDATION_RAW_S3_URI=s3://$DATA_BUCKET/curated/validation.csv
+
+export TRAIN_XGB_S3_URI=s3://$DATA_BUCKET/training/xgboost/train_xgb.csv
+export VALIDATION_XGB_S3_URI=s3://$DATA_BUCKET/training/xgboost/validation_xgb.csv
+export VALIDATION_FEATURES_S3_URI=s3://$DATA_BUCKET/training/xgboost/validation_features_xgb.csv
+export VALIDATION_LABELS_S3_URI=s3://$DATA_BUCKET/training/xgboost/validation_labels.csv
+```
+
+2. Verificar que los datos de fase 01 existen en S3:
+
+```bash
+aws s3 ls "$TRAIN_RAW_S3_URI" --profile "$AWS_PROFILE"
+aws s3 ls "$VALIDATION_RAW_S3_URI" --profile "$AWS_PROFILE"
+```
+
+3. Preparar features numericas para XGBoost (sin headers):
+
+```bash
+python3 scripts/prepare_titanic_xgboost_inputs.py
+wc -l data/titanic/sagemaker/train_xgb.csv data/titanic/sagemaker/validation_xgb.csv
+```
+
+4. Subir archivos preparados a S3:
+
+```bash
+aws s3 cp data/titanic/sagemaker/train_xgb.csv "$TRAIN_XGB_S3_URI" --profile "$AWS_PROFILE"
+aws s3 cp data/titanic/sagemaker/validation_xgb.csv "$VALIDATION_XGB_S3_URI" --profile "$AWS_PROFILE"
+aws s3 cp data/titanic/sagemaker/validation_features_xgb.csv "$VALIDATION_FEATURES_S3_URI" --profile "$AWS_PROFILE"
+aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_URI" --profile "$AWS_PROFILE"
+```
+
+5. Crear Training Job en AWS Console (SageMaker):
+   - Ir a `Amazon SageMaker > Training jobs > Create training job`.
+   - Nombre sugerido: `titanic-xgb-<yyyymmdd-hhmm>`.
+   - Algoritmo: `Built-in algorithm > XGBoost`.
+   - Input mode: `File`.
+   - Canales de datos:
+     - `train` -> `s3://.../training/xgboost/train_xgb.csv`
+     - `validation` -> `s3://.../training/xgboost/validation_xgb.csv`
+     - Content type: `text/csv`.
+   - Output path: `s3://titanic-data-bucket-939122281183-data-science-use/training/xgboost/output/`
+   - Tipo de instancia: `ml.m5.large`, count `1`.
+   - Hyperparameters minimos:
+     - `objective=binary:logistic`
+     - `num_round=200`
+     - `max_depth=5`
+     - `eta=0.2`
+     - `subsample=0.8`
+     - `eval_metric=logloss`
+   - Execution role: usar el rol SageMaker del proyecto con acceso al bucket.
+
+6. Monitorear estado del training job:
+
+```bash
+export TRAINING_JOB_NAME=<nombre-del-job-creado-en-console>
+aws sagemaker describe-training-job \
+  --training-job-name "$TRAINING_JOB_NAME" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'TrainingJobStatus'
+```
+
+7. Crear modelo y Batch Transform sobre validation:
+   - En el detalle del training job, crear `Model`.
+   - Crear `Batch transform job` con:
+     - Input: `s3://.../training/xgboost/validation_features_xgb.csv`
+     - Output: `s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/predictions/`
+     - Content type: `text/csv`
+     - Split type: `Line`
+     - Instance: `ml.m5.large`
+
+8. Descargar predicciones y calcular metricas:
+
+```bash
+aws s3 cp \
+  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/predictions/ \
+  data/titanic/sagemaker/predictions/ \
+  --recursive \
+  --profile "$AWS_PROFILE"
+
+export PREDICTIONS_FILE=$(find data/titanic/sagemaker/predictions -type f -name "*.out" | head -n 1)
+cp "$PREDICTIONS_FILE" data/titanic/sagemaker/validation_predictions.csv
+
+python3 scripts/evaluate_titanic_predictions.py \
+  --predictions data/titanic/sagemaker/validation_predictions.csv \
+  --labels data/titanic/sagemaker/validation_labels.csv \
+  --threshold 0.5 \
+  --output data/titanic/sagemaker/metrics.json
+```
+
+9. Emitir decision `pass/fail` con umbral de promocion:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+metrics_path = Path("data/titanic/sagemaker/metrics.json")
+decision_path = Path("data/titanic/sagemaker/promotion_decision.json")
+threshold = 0.78
+
+metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+decision = "pass" if metrics["accuracy"] >= threshold else "fail"
+
+payload = {
+    "threshold_accuracy": threshold,
+    "observed_accuracy": metrics["accuracy"],
+    "decision": decision,
+}
+decision_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+print(payload)
+PY
+```
+
+10. Publicar evidencia de metricas/decision en S3:
+
+```bash
+aws s3 cp data/titanic/sagemaker/metrics.json \
+  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/metrics.json \
+  --profile "$AWS_PROFILE"
+
+aws s3 cp data/titanic/sagemaker/promotion_decision.json \
+  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/promotion_decision.json \
+  --profile "$AWS_PROFILE"
+```
+
+## Handoff explicito a fase 03
+La fase 03 debe consumir exactamente estos outputs de fase 02:
+1. URIs S3 de datos preparados:
+   - `s3://$DATA_BUCKET/training/xgboost/train_xgb.csv`
+   - `s3://$DATA_BUCKET/training/xgboost/validation_xgb.csv`
+2. Regla de calidad:
+   - threshold `accuracy >= 0.78`.
+3. Artefactos de evidencia:
+   - `evaluation/xgboost/metrics.json`
+   - `evaluation/xgboost/promotion_decision.json`
+4. Config base de entrenamiento validada:
+   - algoritmo `XGBoost`,
+   - hiperparametros base documentados en este tutorial.
 
 ## Decisiones tecnicas y alternativas descartadas
-- Definir split train/validation reproducible.
-- Definir metrica principal para aprobacion de modelo.
-- Definir umbral de promocion (ejemplo: `accuracy >= 0.78` en validation).
-- Alternativas descartadas: despliegue sin validacion cuantitativa.
+- Se estandariza un baseline reproducible con `XGBoost` de SageMaker sobre features numericas.
+- El umbral de promocion de esta fase queda en `accuracy >= 0.78`.
+- La evaluacion se calcula fuera del training job con Batch Transform + script local para obtener
+  `accuracy`, `precision`, `recall`, `f1`.
+- Alternativas descartadas: promover modelo solo por estado `Completed` sin metricas de calidad.
 
 ## IAM usado (roles/policies/permisos clave)
-- SageMaker execution role con acceso minimo a S3/ECR/CloudWatch.
-- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
+- Operador humano: `data-science-user`.
+- SageMaker execution role con permisos minimos para:
+  - `sagemaker:CreateTrainingJob`, `DescribeTrainingJob`, `CreateModel`, `CreateTransformJob`,
+  - `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` en bucket del proyecto,
+  - escritura de logs/metricas en CloudWatch.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
-- `terraform plan` del modulo de entrenamiento
-- Trigger de training job
-- Ejecutar evaluacion con validation set
+- Regla operativa AWS: ejecutar comandos con perfil `data-science-user`.
+- `python3 scripts/prepare_titanic_xgboost_inputs.py`
+- `aws s3 cp ... train_xgb.csv / validation_xgb.csv / validation_features_xgb.csv / validation_labels.csv`
+- Crear training job y transform job en SageMaker Console
+- `python3 scripts/evaluate_titanic_predictions.py ...`
 - Resultado esperado:
-  - training job exitoso,
-  - metricas persistidas (`accuracy`, `f1`, `precision`, `recall`),
-  - decision binaria de promocion (`pass`/`fail`) para la fase de registry.
+  - `TrainingJobStatus=Completed`,
+  - `metrics.json` generado con `accuracy`, `precision`, `recall`, `f1`,
+  - `promotion_decision.json` con `pass` o `fail`.
 
 ## Evidencia
 Agregar:
-- Job ARN.
-- Metricas finales en validation.
-- Umbral aplicado y resultado (`pass`/`fail`).
-- Ubicacion S3 del modelo generado.
+- `TrainingJobArn`.
+- `TransformJobArn`.
+- `metrics.json` y `promotion_decision.json`.
+- URI S3 del modelo (`ModelArtifacts.S3ModelArtifacts`) y de metricas.
 
 ## Criterio de cierre
-- Training job finalizado en estado exitoso.
-- Metricas de validacion almacenadas y trazables.
-- Existe decision de promocion documentada (`pass`/`fail`).
+- Training job y transform job finalizados en estado exitoso.
+- Metricas de validacion generadas y publicadas en S3.
+- Decision de promocion (`pass`/`fail`) documentada y trazable.
 
 ## Riesgos/pendientes
-- Drift entre dataset usado y dataset versionado.
-- Falta de trazabilidad de hiperparametros.
+- Drift entre dataset versionado y dataset usado en entrenamiento real.
+- Falta de control de sesgo o fairness en features seleccionadas.
+- Ajuste de hiperparametros pendiente para mejorar `f1` sin degradar `recall`.
 
 ## Proximo paso
 Automatizar flujo con SageMaker Pipeline en `docs/tutorials/03-sagemaker-pipeline.md`.

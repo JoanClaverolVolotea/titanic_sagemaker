@@ -14,8 +14,8 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 ## How to run this roadmap step by step
 1. Completa `00-foundations.md` y valida identidad/perfil + base Terraform.
 2. Ejecuta `01-data-ingestion.md` y deja `raw/train/validation` en S3.
-3. Ejecuta `02-training-validation.md` y documenta umbral + resultado `pass/fail`.
-4. Ejecuta `03-sagemaker-pipeline.md` y registra modelo en Model Registry.
+3. Ejecuta `02-training-validation.md` como ensayo manual de puerta de calidad y documenta umbral + resultado `pass/fail`.
+4. Ejecuta `03-sagemaker-pipeline.md` para automatizar `Processing -> Training -> Evaluation -> Register` y publicar en Model Registry.
 5. Ejecuta `04-serving-ecs-sagemaker.md` con despliegue `staging -> approval -> prod`.
 6. Automatiza el flujo con `05-cicd-github-actions.md`.
 7. Cierra operación con `06-observability-operations.md`.
