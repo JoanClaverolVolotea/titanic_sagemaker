@@ -28,4 +28,4 @@ Agregar aqui salidas de plan, decisiones de backend state y convenciones aprobad
 - Validar permisos exactos para cada modulo.
 
 ## Proximo paso
-Avanzar a ingestion y gobierno de datos en `docs/01-data-ingestion.md`.
+Avanzar a ingestion y gobierno de datos en `docs/tutorials/01-data-ingestion.md`.

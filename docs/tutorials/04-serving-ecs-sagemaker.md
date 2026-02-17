@@ -25,4 +25,4 @@ Agregar endpoint name/ARN, resultados de smoke test y latencia base.
 - Falta de rollback rapido de endpoint.
 
 ## Proximo paso
-Conectar CI/CD en `docs/05-cicd-github-actions.md`.
+Conectar CI/CD en `docs/tutorials/05-cicd-github-actions.md`.

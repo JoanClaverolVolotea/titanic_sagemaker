@@ -24,4 +24,4 @@ Agregar links a runs de GitHub Actions, planes/applies y resultados de pruebas.
 - Falta de bloqueos por drift o cambios no aprobados.
 
 ## Proximo paso
-Completar observabilidad en `docs/06-observability-operations.md`.
+Completar observabilidad en `docs/tutorials/06-observability-operations.md`.

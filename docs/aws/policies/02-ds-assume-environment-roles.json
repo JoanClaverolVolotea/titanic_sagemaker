@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeProjectEnvironmentRoles",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": [
+        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-terraform-deployer-dev",
+        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-terraform-deployer-prod",
+        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-readonly-dev",
+        "arn:aws:iam::<ACCOUNT_ID>:role/titanic-sagemaker-readonly-prod"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    }
+  ]
+}

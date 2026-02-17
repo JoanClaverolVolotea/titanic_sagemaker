@@ -25,4 +25,4 @@ Agregar rutas S3 finales y prueba de lectura/escritura por rol.
 - Falta de cifrado o lifecycle policies.
 
 ## Proximo paso
-Configurar entrenamiento y validacion en `docs/02-training-validation.md`.
+Configurar entrenamiento y validacion en `docs/tutorials/02-training-validation.md`.

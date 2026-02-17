@@ -24,4 +24,4 @@ Agregar Job ARN, metricas finales y ubicacion del modelo generado.
 - Falta de trazabilidad de hiperparametros.
 
 ## Proximo paso
-Automatizar flujo con SageMaker Pipeline en `docs/03-sagemaker-pipeline.md`.
+Automatizar flujo con SageMaker Pipeline en `docs/tutorials/03-sagemaker-pipeline.md`.

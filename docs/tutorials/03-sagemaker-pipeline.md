@@ -24,4 +24,4 @@ Agregar execution ID, estado de pasos y version registrada.
 - Errores de permisos en pasos intermedios.
 
 ## Proximo paso
-Definir serving con ECS/SageMaker endpoint en `docs/04-serving-ecs-sagemaker.md`.
+Definir serving con ECS/SageMaker endpoint en `docs/tutorials/04-serving-ecs-sagemaker.md`.

@@ -90,14 +90,14 @@ Toda iteracion debe mapearse a una fase y tener evidencia en `docs/`.
 
 Archivos base esperados:
 
-- `docs/00-foundations.md`
-- `docs/01-data-ingestion.md`
-- `docs/02-training-validation.md`
-- `docs/03-sagemaker-pipeline.md`
-- `docs/04-serving-ecs-sagemaker.md`
-- `docs/05-cicd-github-actions.md`
-- `docs/06-observability-operations.md`
-- `docs/07-cost-governance.md`
+- `docs/tutorials/00-foundations.md`
+- `docs/tutorials/01-data-ingestion.md`
+- `docs/tutorials/02-training-validation.md`
+- `docs/tutorials/03-sagemaker-pipeline.md`
+- `docs/tutorials/04-serving-ecs-sagemaker.md`
+- `docs/tutorials/05-cicd-github-actions.md`
+- `docs/tutorials/06-observability-operations.md`
+- `docs/tutorials/07-cost-governance.md`
 - `docs/iterations/ITER-YYYYMMDD-XX.md`
 
 Contenido minimo por archivo:

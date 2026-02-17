@@ -25,4 +25,4 @@ Agregar alarmas activas, capturas de dashboards y runbooks vinculados.
 - Falta de ownership por alerta.
 
 ## Proximo paso
-Aplicar controles de costos en `docs/07-cost-governance.md`.
+Aplicar controles de costos en `docs/tutorials/07-cost-governance.md`.
