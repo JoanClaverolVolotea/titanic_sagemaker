@@ -43,6 +43,24 @@ Guardrails:
 - Perfil obligatorio `data-science-user`.
 - Borrado real solo con `--apply --confirm RESET`.
 
+## Verificacion de recursos activos (operacion/costo)
+Script oficial:
+- `scripts/check_tutorial_resources_active.sh`
+
+Modos recomendados:
+1. Revision global de recursos del roadmap:
+   - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all`
+2. Revision puntual por fase:
+   - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase 04`
+   - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase 07`
+3. Gate para CI/smoke de gobierno:
+   - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all --fail-if-active`
+
+Salida esperada:
+- Resumen por servicio con conteos `active`, `inactive`, `unknown`.
+- Detalle de recursos filtrados por `project=titanic-sagemaker` o prefijo `titanic-`.
+- Warnings sin abortar en caso de permisos faltantes por servicio.
+
 ## End-to-End process (Mermaid)
 
 ```mermaid

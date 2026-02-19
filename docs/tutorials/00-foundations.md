@@ -11,11 +11,20 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
    - naming de recursos,
    - tags obligatorios,
    - separacion `dev`/`prod`.
-4. Validar base Terraform del modulo actual:
+4. Definir estandar de trazabilidad de costos para Terraform (aplica a todos los modulos futuros):
+   - usar `provider.aws.default_tags` con:
+     - `project = "titanic-sagemaker"`,
+     - `env = "<dev|prod>"`,
+     - `owner = "<team-or-user>"`,
+     - `managed_by = "terraform"`,
+     - `cost_center = "<value>"`.
+   - reforzar `tags = { ... }` en recursos/modulos que soporten tags por bloque.
+   - validar en `terraform plan` que no haya recursos sin tags obligatorios.
+5. Validar base Terraform del modulo actual:
    - `terraform fmt -check`
    - `terraform validate`
    - `terraform plan`
-5. Aprobar arquitectura objetivo:
+6. Aprobar arquitectura objetivo:
    - ModelBuild CI (`Processing -> Training -> Evaluation -> Register`),
    - ModelDeploy CD (`staging -> manual approval -> prod`).
 
@@ -23,6 +32,7 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
 - IaC estandar: Terraform.
 - CI/CD estandar: GitHub Actions.
 - Ambientes: `dev` y `prod`.
+- Cost tracking obligatorio desde foundations con `default_tags` + tags por recurso.
 - Arquitectura objetivo: ModelBuild CI (preprocess/train/evaluate/register) + ModelDeploy CD (staging/manual approval/prod).
 - Alternativas descartadas: despliegues manuales sin pipeline.
 
@@ -36,6 +46,21 @@ Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones 
 
 ## Comandos ejecutados y resultado esperado
 - Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
+- Plantilla minima para futuros providers Terraform:
+  ```hcl
+  provider "aws" {
+    region = var.aws_region
+    default_tags {
+      tags = {
+        project     = "titanic-sagemaker"
+        env         = var.environment
+        owner       = var.owner
+        managed_by  = "terraform"
+        cost_center = var.cost_center
+      }
+    }
+  }
+  ```
 - `terraform fmt -check`
 - `terraform validate`
 - `terraform plan`
