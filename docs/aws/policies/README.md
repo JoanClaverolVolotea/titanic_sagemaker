@@ -15,6 +15,8 @@ Permitir que el usuario operador de Data Science pueda:
 - `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
 - `05-ds-policy-administration.json`: permisos IAM bootstrap para que `data-science-user` pueda ejecutar el script de ensure (gestionar versions/attachments de policies).
 - `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos para bootstrap y gestion de configuracion del bucket de tutorial creado en fase 00 (`titanic-data-bucket-939122281183-data-science-user`) por Terraform.
+- `07-ds-sagemaker-training-job-lifecycle.json`: permisos acotados para listar/describir/parar/eliminar training jobs del proyecto (`titanic-*`) en `eu-west-1`.
+- `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para listar cuotas disponibles (incluyendo SageMaker transform usage) en `eu-west-1`.
 
 ## Alineacion con fase 00 (Terraform foundations)
 El stack `terraform/00_foundations` crea/gestiona el bucket de tutorial:
@@ -82,6 +84,8 @@ Politicas esperadas y archivo fuente:
 | `DataSciences3DataAccess` | `docs/aws/policies/04-ds-s3-data-access.json` |
 | `DataSciencePolicyAdministration` | `docs/aws/policies/05-ds-policy-administration.json` |
 | `DataScienceS3TutorialBucketBootstrap` | `docs/aws/policies/06-ds-s3-tutorial-bucket-bootstrap.json` |
+| `DataScienceSageMakerTrainingJobLifecycle` | `docs/aws/policies/07-ds-sagemaker-training-job-lifecycle.json` |
+| `DataScienceServiceQuotasReadOnly` | `docs/aws/policies/08-ds-service-quotas-readonly.json` |
 
 Para cada politica:
 1. Ve a `IAM > Policies`.
@@ -107,6 +111,8 @@ Nota: IAM es un servicio global, pero esta documentacion asume operacion en `eu-
    - `DataSciencePassroleRestricted`
    - `DataSciences3DataAccess`
    - `DataScienceS3TutorialBucketBootstrap` (requerida para crear/subir al bucket `titanic-data-bucket-939122281183-data-science-user`)
+   - `DataScienceSageMakerTrainingJobLifecycle` (requerida para `sagemaker:DeleteTrainingJob` via CLI/Console)
+   - `DataScienceServiceQuotasReadOnly` (requerida para consultar quotas de SageMaker por CLI)
 5. Si vas a usar `scripts/ensure_ds_policies.sh`, marca tambien:
    - `DataSciencePolicyAdministration`
 6. `Next` -> `Add permissions`.
@@ -137,7 +143,7 @@ output = json
 ```
 
 ### 6) Validar en la consola y por CLI
-1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 5 politicas operativas (incluyendo `DataScienceS3TutorialBucketBootstrap`).
+1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 7 politicas operativas (incluyendo `DataScienceS3TutorialBucketBootstrap`, `DataScienceSageMakerTrainingJobLifecycle` y `DataScienceServiceQuotasReadOnly`).
 2. Si usas el script de ensure, confirma tambien `DataSciencePolicyAdministration`.
 3. Abre `IAM Policy Simulator`.
 4. Selecciona el usuario `data-science-user`.
@@ -153,6 +159,8 @@ output = json
 7. Prueba perfil local:
    - `aws sts get-caller-identity --profile data-science-user`
    - `aws configure list --profile data-science-user`
+8. Prueba lectura de quotas SageMaker por CLI:
+   - `aws service-quotas list-service-quotas --service-code sagemaker --query "Quotas[?contains(QuotaName, 'for transform job usage')].[QuotaName,Value]" --output table --profile data-science-user --region eu-west-1`
 
 ## Alternativa automatizada (script)
 Si prefieres aplicar/verificar todo en un solo paso desde terminal:
@@ -167,7 +175,7 @@ AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
 
 El script:
 - Verifica cuenta, usuario y JSON locales.
-- Crea/actualiza las 5 policies operativas (versionado IAM).
+- Crea/actualiza las 7 policies operativas (versionado IAM).
 - Adjunta policies base faltantes al usuario.
 - Requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario.
 - Falla si no se ejecuta con perfil `data-science-user`.

@@ -1,0 +1,29 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListAndDescribeTrainingJobsInEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:ListTrainingJobs",
+        "sagemaker:DescribeTrainingJob"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "StopDeleteProjectTrainingJobs",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:StopTrainingJob",
+        "sagemaker:DeleteTrainingJob",
+        "sagemaker:DescribeTrainingJob"
+      ],
+      "Resource": "arn:aws:sagemaker:eu-west-1:939122281183:training-job/titanic-*"
+    }
+  ]
+}

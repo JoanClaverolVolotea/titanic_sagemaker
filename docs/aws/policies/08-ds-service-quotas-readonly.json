@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ServiceQuotasReadOnlyEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "servicequotas:ListServiceQuotas",
+        "servicequotas:GetServiceQuota",
+        "servicequotas:GetAWSDefaultServiceQuota",
+        "servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota",
+        "servicequotas:ListServices"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    }
+  ]
+}

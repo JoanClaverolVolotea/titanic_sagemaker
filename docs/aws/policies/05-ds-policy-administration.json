@@ -24,6 +24,8 @@
         "arn:aws:iam::939122281183:policy/DataSciencePassroleRestricted",
         "arn:aws:iam::939122281183:policy/DataSciences3DataAccess",
         "arn:aws:iam::939122281183:policy/DataScienceS3TutorialBucketBootstrap",
+        "arn:aws:iam::939122281183:policy/DataScienceSageMakerTrainingJobLifecycle",
+        "arn:aws:iam::939122281183:policy/DataScienceServiceQuotasReadOnly",
         "arn:aws:iam::939122281183:policy/DataSciencePolicyAdministration"
       ]
     },
@@ -42,6 +44,8 @@
         "arn:aws:iam::939122281183:policy/DataSciencePassroleRestricted",
         "arn:aws:iam::939122281183:policy/DataSciences3DataAccess",
         "arn:aws:iam::939122281183:policy/DataScienceS3TutorialBucketBootstrap",
+        "arn:aws:iam::939122281183:policy/DataScienceSageMakerTrainingJobLifecycle",
+        "arn:aws:iam::939122281183:policy/DataScienceServiceQuotasReadOnly",
         "arn:aws:iam::939122281183:policy/DataSciencePolicyAdministration"
       ]
     },

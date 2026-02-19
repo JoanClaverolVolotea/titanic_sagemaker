@@ -6,7 +6,7 @@ Entrenar un modelo binario (`Survived`) en SageMaker y emitir una decision objet
 
 Resultado minimo esperado al cerrar esta fase:
 1. Un `TrainingJobArn` exitoso.
-2. Predicciones sobre validation generadas por Batch Transform.
+2. Predicciones sobre validation (preferente por Batch Transform; fallback local si no hay quota de transform).
 3. `metrics.json` con `accuracy`, `precision`, `recall`, `f1`.
 4. `promotion_decision.json` con `pass` o `fail`.
 
@@ -102,6 +102,7 @@ aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_UR
    - Tipo de instancia: `ml.m5.large`, count `1`.
    - Hyperparameters minimos:
      - `objective=binary:logistic`
+     - no definir `num_class` para este caso binario
      - `num_round=200`
      - `max_depth=5`
      - `eta=0.2`
@@ -123,6 +124,16 @@ aws sagemaker describe-training-job \
   --query 'TrainingJobStatus'
 ```
 
+Si el estado es `Failed`, revisar causa raiz:
+
+```bash
+aws sagemaker describe-training-job \
+  --training-job-name "$TRAINING_JOB_NAME" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'FailureReason'
+```
+
 7. Crear modelo y Batch Transform sobre validation:
    - En el detalle del training job, crear `Model` con nombre sugerido:
      - `titanic-xgb-model-<yyyymmdd-hhmm>`
@@ -132,12 +143,32 @@ aws sagemaker describe-training-job \
      - Output: `s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/predictions/`
      - Content type: `text/csv`
      - Split type: `Line`
-     - Instance: `ml.m5.large`
+     - Instance count: `1`
+     - Instance type: usar un tipo con quota disponible para transform job usage (no asumir `ml.m5.large`)
      - Tags recomendados:
        - `project=titanic-sagemaker`
        - `tutorial_phase=02`
 
-8. Descargar predicciones y calcular metricas:
+Antes de crear el transform job, validar quotas disponibles por CLI:
+
+```bash
+aws service-quotas list-service-quotas \
+  --service-code sagemaker \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query "Quotas[?contains(QuotaName, 'for transform job usage')].[QuotaName,Value]" \
+  --output table
+```
+
+Si recibes `ResourceLimitExceeded`:
+- Verifica quota de la instancia elegida.
+- Cambia a otra instancia con quota > 0.
+- Si todas estan en `0`, solicita increase en Service Quotas y deja evidencia en `docs/iterations/`.
+
+8. Obtener predicciones y calcular metricas:
+
+Opcion A (preferente): Batch Transform
+- Descargar predicciones de S3 y evaluar metricas:
 
 ```bash
 aws s3 cp \
@@ -149,6 +180,84 @@ aws s3 cp \
 export PREDICTIONS_FILE=$(find data/titanic/sagemaker/predictions -type f -name "*.out" | head -n 1)
 cp "$PREDICTIONS_FILE" data/titanic/sagemaker/validation_predictions.csv
 
+python3 scripts/evaluate_titanic_predictions.py \
+  --predictions data/titanic/sagemaker/validation_predictions.csv \
+  --labels data/titanic/sagemaker/validation_labels.csv \
+  --threshold 0.5 \
+  --output data/titanic/sagemaker/metrics.json
+```
+
+Opcion B (workaround): inferencia local desde `ModelArtifacts` cuando no hay quota de transform
+
+1) Obtener y descargar artefacto del modelo entrenado:
+
+```bash
+export MODEL_ARTIFACT_S3_URI=$(aws sagemaker describe-training-job \
+  --training-job-name "$TRAINING_JOB_NAME" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'ModelArtifacts.S3ModelArtifacts' \
+  --output text)
+
+mkdir -p data/titanic/sagemaker/model
+aws s3 cp "$MODEL_ARTIFACT_S3_URI" data/titanic/sagemaker/model/model.tar.gz --profile "$AWS_PROFILE"
+mkdir -p data/titanic/sagemaker/model/extracted
+tar -xzf data/titanic/sagemaker/model/model.tar.gz -C data/titanic/sagemaker/model/extracted
+```
+
+2) Generar predicciones localmente con el modelo XGBoost:
+
+```bash
+uv run --with xgboost==2.1.4 python -c "import xgboost; print(xgboost.__version__)"
+```
+
+Nota de compatibilidad:
+- Los artefactos generados por `sagemaker-xgboost:1.3-1` pueden fallar con `xgboost` 3.x al cargar `xgboost-model`.
+- Para este workaround usar `xgboost==2.1.4`.
+
+```bash
+uv run --with xgboost==2.1.4 python - <<'PY'
+import csv
+from pathlib import Path
+
+import xgboost as xgb
+
+features_path = Path("data/titanic/sagemaker/validation_features_xgb.csv")
+predictions_path = Path("data/titanic/sagemaker/validation_predictions.csv")
+model_root = Path("data/titanic/sagemaker/model/extracted")
+
+model_files = sorted([p for p in model_root.rglob("*") if p.is_file() and p.name.startswith("xgboost-model")])
+if not model_files:
+    raise FileNotFoundError("No se encontro xgboost-model dentro de model.tar.gz")
+
+rows = []
+with features_path.open("r", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    for row in reader:
+        if not row:
+            continue
+        rows.append([float(x) for x in row])
+
+if not rows:
+    raise ValueError("validation_features_xgb.csv no tiene filas")
+
+dmat = xgb.DMatrix(rows)
+booster = xgb.Booster()
+booster.load_model(str(model_files[0]))
+preds = booster.predict(dmat)
+
+predictions_path.parent.mkdir(parents=True, exist_ok=True)
+with predictions_path.open("w", encoding="utf-8", newline="") as f:
+    for score in preds:
+        f.write(f"{float(score):.10f}\n")
+
+print(f"Predicciones generadas: {len(preds)} -> {predictions_path}")
+PY
+```
+
+3) Calcular metricas con el mismo script de evaluacion:
+
+```bash
 python3 scripts/evaluate_titanic_predictions.py \
   --predictions data/titanic/sagemaker/validation_predictions.csv \
   --labels data/titanic/sagemaker/validation_labels.csv \
@@ -203,18 +312,20 @@ scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESE
 ```
 
 ## Handoff explicito a fase 03
-La fase 03 debe consumir exactamente estos outputs de fase 02:
-1. URIs S3 de datos preparados:
-   - `s3://$DATA_BUCKET/training/xgboost/train_xgb.csv`
-   - `s3://$DATA_BUCKET/training/xgboost/validation_xgb.csv`
-2. Regla de calidad:
+La fase 02 entrega baseline y criterio de calidad para fase 03, pero no impone como contrato
+de entrada los CSV procesados manualmente.
+1. Regla de calidad a reutilizar en pipeline:
    - threshold `accuracy >= 0.78`.
-3. Artefactos de evidencia:
-   - `evaluation/xgboost/metrics.json`
-   - `evaluation/xgboost/promotion_decision.json`
-4. Config base de entrenamiento validada:
+2. Config base de entrenamiento validada:
    - algoritmo `XGBoost`,
    - hiperparametros base documentados en este tutorial.
+3. Artefactos de evidencia para trazabilidad:
+   - `evaluation/xgboost/metrics.json`
+   - `evaluation/xgboost/promotion_decision.json`
+4. Nota de separacion arquitectonica:
+   - fase 03 debe iniciar desde `curated/train.csv` y `curated/validation.csv`,
+   - `train_xgb.csv`, `validation_xgb.csv`, `validation_features_xgb.csv`, `validation_labels.csv`
+     pasan a ser artefactos internos del paso `DataPreProcessing` del pipeline.
 
 ## Decisiones tecnicas y alternativas descartadas
 - Se estandariza un baseline reproducible con `XGBoost` de SageMaker sobre features numericas.
@@ -222,6 +333,7 @@ La fase 03 debe consumir exactamente estos outputs de fase 02:
 - El umbral de promocion de esta fase queda en `accuracy >= 0.78`.
 - La evaluacion se calcula fuera del training job con Batch Transform + script local para obtener
   `accuracy`, `precision`, `recall`, `f1`.
+- Si no hay quota de transform job usage, se permite fallback temporal con inferencia local desde `ModelArtifacts`.
 - Alternativas descartadas: promover modelo solo por estado `Completed` sin metricas de calidad.
 
 ## IAM usado (roles/policies/permisos clave)
@@ -235,7 +347,8 @@ La fase 03 debe consumir exactamente estos outputs de fase 02:
 - Regla operativa AWS: ejecutar comandos con perfil `data-science-user`.
 - `python3 scripts/prepare_titanic_xgboost_inputs.py`
 - `aws s3 cp ... train_xgb.csv / validation_xgb.csv / validation_features_xgb.csv / validation_labels.csv`
-- Crear training job y transform job en SageMaker Console
+- Crear training job y transform job en SageMaker Console (si hay quota de transform).
+- Workaround local (si no hay quota): `uv run --with xgboost==2.1.4 python - <<'PY' ...`
 - `python3 scripts/evaluate_titanic_predictions.py ...`
 - Resultado esperado:
   - `TrainingJobStatus=Completed`,
@@ -245,12 +358,13 @@ La fase 03 debe consumir exactamente estos outputs de fase 02:
 ## Evidencia
 Agregar:
 - `TrainingJobArn`.
-- `TransformJobArn`.
+- `TransformJobArn` (si aplica) o evidencia de workaround local (`MODEL_ARTIFACT_S3_URI` + comando de inferencia local).
 - `metrics.json` y `promotion_decision.json`.
 - URI S3 del modelo (`ModelArtifacts.S3ModelArtifacts`) y de metricas.
 
 ## Criterio de cierre
-- Training job y transform job finalizados en estado exitoso.
+- Training job finalizado en estado exitoso.
+- Transform job exitoso o workaround local ejecutado y documentado cuando no haya quota disponible.
 - Metricas de validacion generadas y publicadas en S3.
 - Decision de promocion (`pass`/`fail`) documentada y trazable.
 
@@ -258,6 +372,19 @@ Agregar:
 - Drift entre dataset versionado y dataset usado en entrenamiento real.
 - Falta de control de sesgo o fairness en features seleccionadas.
 - Ajuste de hiperparametros pendiente para mejorar `f1` sin degradar `recall`.
+- Quotas de SageMaker Batch Transform pueden venir en `0` para todas las instancias en cuentas nuevas/restringidas.
+
+## Troubleshooting rapido
+1. `XGBoostError ... preds.Size() != labels.Size() (1426 vs. 713)`:
+   - Causa comun: `objective=reg:logistic` y/o `num_class` definido en problema binario.
+   - Corregir a `objective=binary:logistic` y remover `num_class`.
+2. `AccessDenied ... s3:GetObject ... train_xgb.csv` durante training:
+   - Verificar que la policy S3 este adjunta al execution role de SageMaker (no solo como permissions boundary).
+3. `ResourceLimitExceeded ... for transform job usage`:
+   - Ajustar `Instance count=1`, elegir instancia con quota > 0 o solicitar increase.
+4. `Failed to load model ... binary format ... removed in 3.1` en inferencia local:
+   - Causa: version local de XGBoost no compatible con artefacto legacy del container SageMaker.
+   - Corregir ejecutando workaround con `uv run --with xgboost==2.1.4`.
 
 ## Proximo paso
 Automatizar flujo con SageMaker Pipeline en `docs/tutorials/03-sagemaker-pipeline.md`.
