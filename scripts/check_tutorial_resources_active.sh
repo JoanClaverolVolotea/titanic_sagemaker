@@ -6,7 +6,7 @@ AWS_PROFILE="${AWS_PROFILE:-data-science-user}"
 AWS_REGION="${AWS_REGION:-eu-west-1}"
 PROJECT_TAG="${PROJECT_TAG:-titanic-sagemaker}"
 NAME_PREFIX="${NAME_PREFIX:-titanic-}"
-DATA_BUCKET="${DATA_BUCKET:-titanic-data-bucket-939122281183-data-science-use}"
+DATA_BUCKET="${DATA_BUCKET:-titanic-data-bucket-939122281183-data-science-user}"
 FAIL_IF_ACTIVE=0
 
 ACCOUNT_ID=""

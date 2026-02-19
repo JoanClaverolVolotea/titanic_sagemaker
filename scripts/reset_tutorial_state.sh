@@ -8,7 +8,7 @@ CONFIRM_VALUE=""
 
 AWS_PROFILE="${AWS_PROFILE:-data-science-user}"
 AWS_REGION="${AWS_REGION:-eu-west-1}"
-DATA_BUCKET="${DATA_BUCKET:-titanic-data-bucket-939122281183-data-science-use}"
+DATA_BUCKET="${DATA_BUCKET:-titanic-data-bucket-939122281183-data-science-user}"
 PROJECT_TAG="${PROJECT_TAG:-titanic-sagemaker}"
 NAME_PREFIX="${NAME_PREFIX:-titanic-}"
 PHASE2_PREFIX="${PHASE2_PREFIX:-titanic-xgb-}"
@@ -47,7 +47,7 @@ Options:
   --confirm <value>           Debe ser RESET cuando se usa --apply
   --profile <name>            AWS profile (default: data-science-user)
   --region <name>             AWS region (default: eu-west-1)
-  --bucket <name>             S3 bucket tutorial (default: titanic-data-bucket-939122281183-data-science-use)
+  --bucket <name>             S3 bucket tutorial (default: titanic-data-bucket-939122281183-data-science-user)
   --project-tag <value>       Tag value para key project (default: titanic-sagemaker)
   --name-prefix <value>       Prefijo fallback de nombres (default: titanic-)
   --verbose                   Logs detallados

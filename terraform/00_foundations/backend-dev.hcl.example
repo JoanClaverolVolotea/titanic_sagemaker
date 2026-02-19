@@ -1,0 +1,6 @@
+bucket         = "replace-with-existing-tfstate-bucket"
+key            = "titanic-sagemaker/00_foundations/dev/terraform.tfstate"
+region         = "eu-west-1"
+profile        = "data-science-user"
+encrypt        = true
+dynamodb_table = "replace-with-existing-terraform-lock-table"

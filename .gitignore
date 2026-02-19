@@ -22,6 +22,14 @@ venv/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+backend.hcl
+backend-*.hcl
+!backend-*.hcl.example
 crash.log
 override.tf
 override.tf.json

@@ -1,0 +1,8 @@
+aws_region        = "eu-west-1"
+aws_profile       = "data-science-user"
+environment       = "dev"
+project           = "titanic-sagemaker"
+owner             = "data-science-user"
+cost_center       = "data-science"
+data_bucket_name  = "titanic-data-bucket-939122281183-data-science-user"
+create_data_bucket = true

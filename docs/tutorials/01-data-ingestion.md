@@ -3,9 +3,16 @@
 ## Objetivo y contexto
 Implementar carga y versionado de datos Titanic en S3, con separacion de raw, curated y artefactos.
 
+## Prerequisitos concretos
+1. Fase 00 aplicada con Terraform en `terraform/00_foundations`.
+2. Bucket de datos disponible como output de fase 00:
+   - `terraform -chdir=terraform/00_foundations output -raw data_bucket_name`
+3. Perfil AWS CLI operativo: `data-science-user`.
+4. Ejecutar este tutorial desde la raiz del repositorio para resolver rutas y comandos Terraform correctamente.
+
 ## Paso a paso (ejecucion)
-1. Definir bucket de trabajo para tutoriales:
-   - `export DATA_BUCKET=titanic-data-bucket-939122281183-data-science-use`
+1. Definir bucket de trabajo desde output de fase 00:
+   - `export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)`
 2. Preparar rutas locales de datos:
    - `data/titanic/raw/`
    - `data/titanic/splits/`
@@ -20,9 +27,12 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
    - `aws s3 cp data/titanic/splits/train.csv s3://$DATA_BUCKET/curated/train.csv --profile data-science-user`
    - `aws s3 cp data/titanic/splits/validation.csv s3://$DATA_BUCKET/curated/validation.csv --profile data-science-user`
 7. Verificar lectura de objetos en S3 por prefijo `raw/` y `curated/`.
+8. Verificar que el bucket usado corresponde a fase 00:
+   - `echo "$DATA_BUCKET"` debe devolver `titanic-data-bucket-939122281183-data-science-user`.
 
 ## Decisiones tecnicas y alternativas descartadas
 - Estructura S3 por entorno (`dev`/`prod`).
+- El bucket operativo de tutorial se consume desde output de fase 00 (no hardcode en scripts).
 - Convencion de paths para train/validation.
 - Datos base del proyecto:
   - `data/titanic/raw/titanic.csv`
@@ -37,8 +47,8 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
 
 ## Comandos ejecutados y resultado esperado
 - Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
-- Definir bucket de trabajo:
-  - `export DATA_BUCKET=titanic-data-bucket-939122281183-data-science-use`
+- Definir bucket de trabajo desde Terraform foundations:
+  - `export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)`
 - Descargar dataset Titanic:
   - `curl -fsSL https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv -o data/titanic/raw/titanic.csv`
 - Generar split reproducible:

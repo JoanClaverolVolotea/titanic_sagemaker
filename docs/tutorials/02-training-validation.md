@@ -25,14 +25,18 @@ Fuera de alcance en esta fase:
 - Despliegue `staging/prod` (se ejecuta en fase 04/05).
 
 ## Prerequisitos concretos
-1. Dataset de fase 01 cargado en S3:
-   - `s3://titanic-data-bucket-939122281183-data-science-use/curated/train.csv`
-   - `s3://titanic-data-bucket-939122281183-data-science-use/curated/validation.csv`
-2. Perfil AWS CLI operativo: `data-science-user`.
-3. Un SageMaker execution role existente con permisos a:
+1. Fase 00 aplicada en `terraform/00_foundations` (bucket y controles base activos).
+2. Bucket operativo obtenido desde output de fase 00:
+   - `terraform -chdir=terraform/00_foundations output -raw data_bucket_name`
+3. Fase 01 completada (dataset cargado en bucket de fase 00):
+   - `s3://titanic-data-bucket-939122281183-data-science-user/curated/train.csv`
+   - `s3://titanic-data-bucket-939122281183-data-science-user/curated/validation.csv`
+4. Perfil AWS CLI operativo: `data-science-user`.
+5. Un SageMaker execution role existente con permisos a:
    - leer/escribir en el bucket del proyecto,
    - ejecutar Training/Model/Transform jobs,
    - escribir logs en CloudWatch.
+6. Ejecutar este tutorial desde la raiz del repositorio para resolver `terraform -chdir=terraform/00_foundations ...`.
 
 ## Como se entrena realmente el modelo (sin ambiguedad)
 1. Local solo prepara/evalua:
@@ -51,7 +55,7 @@ Fuera de alcance en esta fase:
 ```bash
 export AWS_PROFILE=data-science-user
 export AWS_REGION=eu-west-1
-export DATA_BUCKET=titanic-data-bucket-939122281183-data-science-use
+export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)
 
 export TRAIN_RAW_S3_URI=s3://$DATA_BUCKET/curated/train.csv
 export VALIDATION_RAW_S3_URI=s3://$DATA_BUCKET/curated/validation.csv
@@ -94,7 +98,7 @@ aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_UR
      - `train` -> `s3://.../training/xgboost/train_xgb.csv`
      - `validation` -> `s3://.../training/xgboost/validation_xgb.csv`
      - Content type: `text/csv`.
-   - Output path: `s3://titanic-data-bucket-939122281183-data-science-use/training/xgboost/output/`
+   - Output path: `s3://titanic-data-bucket-939122281183-data-science-user/training/xgboost/output/`
    - Tipo de instancia: `ml.m5.large`, count `1`.
    - Hyperparameters minimos:
      - `objective=binary:logistic`
@@ -125,7 +129,7 @@ aws sagemaker describe-training-job \
    - Crear `Batch transform job` con:
      - Nombre sugerido: `titanic-xgb-transform-<yyyymmdd-hhmm>`
      - Input: `s3://.../training/xgboost/validation_features_xgb.csv`
-     - Output: `s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/predictions/`
+     - Output: `s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/predictions/`
      - Content type: `text/csv`
      - Split type: `Line`
      - Instance: `ml.m5.large`
@@ -137,7 +141,7 @@ aws sagemaker describe-training-job \
 
 ```bash
 aws s3 cp \
-  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/predictions/ \
+  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/predictions/ \
   data/titanic/sagemaker/predictions/ \
   --recursive \
   --profile "$AWS_PROFILE"
@@ -180,11 +184,11 @@ PY
 
 ```bash
 aws s3 cp data/titanic/sagemaker/metrics.json \
-  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/metrics.json \
+  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/metrics.json \
   --profile "$AWS_PROFILE"
 
 aws s3 cp data/titanic/sagemaker/promotion_decision.json \
-  s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/promotion_decision.json \
+  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/promotion_decision.json \
   --profile "$AWS_PROFILE"
 ```
 
@@ -214,6 +218,7 @@ La fase 03 debe consumir exactamente estos outputs de fase 02:
 
 ## Decisiones tecnicas y alternativas descartadas
 - Se estandariza un baseline reproducible con `XGBoost` de SageMaker sobre features numericas.
+- Fase 02 consume el bucket de salida de fase 00 para evitar drift de nombres entre infraestructura y ejecucion.
 - El umbral de promocion de esta fase queda en `accuracy >= 0.78`.
 - La evaluacion se calcula fuera del training job con Batch Transform + script local para obtener
   `accuracy`, `precision`, `recall`, `f1`.

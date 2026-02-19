@@ -14,7 +14,21 @@ Permitir que el usuario operador de Data Science pueda:
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
 - `05-ds-policy-administration.json`: permisos IAM bootstrap para que `data-science-user` pueda ejecutar el script de ensure (gestionar versions/attachments de policies).
-- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos minimos para crear y operar el bucket de tutorial `titanic-data-bucket-939122281183-data-science-use`.
+- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos para bootstrap y gestion de configuracion del bucket de tutorial creado en fase 00 (`titanic-data-bucket-939122281183-data-science-user`) por Terraform.
+
+## Alineacion con fase 00 (Terraform foundations)
+El stack `terraform/00_foundations` crea/gestiona el bucket de tutorial:
+- `titanic-data-bucket-939122281183-data-science-user`
+
+Para que Terraform pueda crear/importar y gestionar ese bucket en fase 00, la policy `06-ds-s3-tutorial-bucket-bootstrap.json` debe cubrir:
+- `s3:CreateBucket`
+- lectura de configuracion del bucket (acciones `s3:Get*` acotadas al ARN del bucket)
+- escritura de configuracion requerida por Terraform (`PutBucketPolicy`, `PutBucketVersioning`, `PutEncryptionConfiguration`, etc.)
+
+Justificacion de seguridad para wildcard en `Action`:
+- `s3:Get*` se usa solo para bootstrap/import de Terraform del bucket en fase 00.
+- El alcance se limita al recurso `arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user`.
+- Evita fallos operativos por nuevas lecturas `GetBucket...` que el provider AWS ejecuta durante `refresh/import`.
 
 ## Cuenta y region
 Esta version ya usa:
@@ -92,7 +106,7 @@ Nota: IAM es un servicio global, pero esta documentacion asume operacion en `eu-
    - `DataScienceObservabilityReadOnly`
    - `DataSciencePassroleRestricted`
    - `DataSciences3DataAccess`
-   - `DataScienceS3TutorialBucketBootstrap` (requerida para crear/subir al bucket `titanic-data-bucket-939122281183-data-science-use`)
+   - `DataScienceS3TutorialBucketBootstrap` (requerida para crear/subir al bucket `titanic-data-bucket-939122281183-data-science-user`)
 5. Si vas a usar `scripts/ensure_ds_policies.sh`, marca tambien:
    - `DataSciencePolicyAdministration`
 6. `Next` -> `Add permissions`.
@@ -132,6 +146,9 @@ output = json
    - `iam:PassRole`
    - `cloudwatch:GetMetricData`
    - `s3:PutObject`
+   - `s3:GetBucketPolicy`
+   - `s3:GetBucketTagging`
+   - `s3:GetAccelerateConfiguration`
 6. Configura el contexto de simulacion con region `eu-west-1` para validar reglas con `aws:RequestedRegion`.
 7. Prueba perfil local:
    - `aws sts get-caller-identity --profile data-science-user`
