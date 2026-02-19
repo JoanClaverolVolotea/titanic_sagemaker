@@ -34,6 +34,17 @@ Fuera de alcance en esta fase:
    - ejecutar Training/Model/Transform jobs,
    - escribir logs en CloudWatch.
 
+## Como se entrena realmente el modelo (sin ambiguedad)
+1. Local solo prepara/evalua:
+   - `scripts/prepare_titanic_xgboost_inputs.py` transforma CSV a features numericas.
+   - `scripts/evaluate_titanic_predictions.py` calcula metricas sobre predicciones.
+2. El entrenamiento real ocurre en AWS SageMaker:
+   - Paso 5 crea un `Training Job` en SageMaker (`Built-in XGBoost`).
+   - El artefacto del modelo queda en S3 (`training/xgboost/output/`).
+3. La evaluacion operacional ocurre con Batch Transform en SageMaker:
+   - Paso 7 ejecuta inferencia batch sobre validation.
+   - Paso 8 baja predicciones para calcular metricas y decidir `pass/fail`.
+
 ## Paso a paso (ejecucion)
 1. Definir variables del run:
 
@@ -76,7 +87,7 @@ aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_UR
 
 5. Crear Training Job en AWS Console (SageMaker):
    - Ir a `Amazon SageMaker > Training jobs > Create training job`.
-   - Nombre sugerido: `titanic-xgb-<yyyymmdd-hhmm>`.
+   - Nombre sugerido: `titanic-xgb-train-<yyyymmdd-hhmm>`.
    - Algoritmo: `Built-in algorithm > XGBoost`.
    - Input mode: `File`.
    - Canales de datos:
@@ -93,6 +104,9 @@ aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_UR
      - `subsample=0.8`
      - `eval_metric=logloss`
    - Execution role: usar el rol SageMaker del proyecto con acceso al bucket.
+   - Tags recomendados en el job:
+     - `project=titanic-sagemaker`
+     - `tutorial_phase=02`
 
 6. Monitorear estado del training job:
 
@@ -106,13 +120,18 @@ aws sagemaker describe-training-job \
 ```
 
 7. Crear modelo y Batch Transform sobre validation:
-   - En el detalle del training job, crear `Model`.
+   - En el detalle del training job, crear `Model` con nombre sugerido:
+     - `titanic-xgb-model-<yyyymmdd-hhmm>`
    - Crear `Batch transform job` con:
+     - Nombre sugerido: `titanic-xgb-transform-<yyyymmdd-hhmm>`
      - Input: `s3://.../training/xgboost/validation_features_xgb.csv`
      - Output: `s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/predictions/`
      - Content type: `text/csv`
      - Split type: `Line`
      - Instance: `ml.m5.large`
+     - Tags recomendados:
+       - `project=titanic-sagemaker`
+       - `tutorial_phase=02`
 
 8. Descargar predicciones y calcular metricas:
 
@@ -167,6 +186,16 @@ aws s3 cp data/titanic/sagemaker/metrics.json \
 aws s3 cp data/titanic/sagemaker/promotion_decision.json \
   s3://titanic-data-bucket-939122281183-data-science-use/evaluation/xgboost/promotion_decision.json \
   --profile "$AWS_PROFILE"
+```
+
+11. (Opcional) Resetear estado para repetir fase 02:
+
+```bash
+# Plan de borrado (sin cambios)
+scripts/reset_tutorial_state.sh --target after-tutorial-2
+
+# Ejecutar borrado real
+scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESET
 ```
 
 ## Handoff explicito a fase 03

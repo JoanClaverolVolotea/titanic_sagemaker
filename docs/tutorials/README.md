@@ -26,6 +26,23 @@ Criterio global de finalizacion:
 - Hay trazabilidad desde commit hasta modelo en registry y endpoint en `prod`.
 - Hay evidencia operativa y de costo registrada en `docs/iterations/`.
 
+## Reset de estado por tutorial
+Script oficial:
+- `scripts/reset_tutorial_state.sh`
+
+Modos:
+1. Reset fase 02 (mantiene `raw/` y `curated/`):
+   - `scripts/reset_tutorial_state.sh --target after-tutorial-2`
+   - `scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESET`
+2. Reset completo del tutorial (conserva bucket e IAM):
+   - `scripts/reset_tutorial_state.sh --target all`
+   - `scripts/reset_tutorial_state.sh --target all --apply --confirm RESET`
+
+Guardrails:
+- `dry-run` por defecto.
+- Perfil obligatorio `data-science-user`.
+- Borrado real solo con `--apply --confirm RESET`.
+
 ## End-to-End process (Mermaid)
 
 ```mermaid

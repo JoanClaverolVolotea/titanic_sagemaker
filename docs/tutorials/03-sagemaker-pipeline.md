@@ -9,6 +9,9 @@ Esta fase convierte el ensayo manual de fase 02 en un flujo automatizado de `Mod
    - URIs `train_xgb.csv` y `validation_xgb.csv`,
    - threshold de calidad `accuracy >= 0.78`,
    - hiperparametros base validados.
+   - convencion operativa para cleanup:
+     - nombres con prefijo `titanic-`,
+     - tags `project=titanic-sagemaker` y `tutorial_phase=03`.
 2. Definir pipeline con 4 pasos obligatorios:
    - `DataPreProcessing`
    - `TrainModel`
@@ -27,6 +30,10 @@ Esta fase convierte el ensayo manual de fase 02 en un flujo automatizado de `Mod
 8. Verificar que el modelo quedó en `SageMaker Model Registry` con metadatos de evaluación.
 9. Configurar trigger programado (EventBridge/Step Functions) para ejecuciones periódicas.
 
+10. (Opcional) Reset total del tutorial cuando necesites volver a fase 00/01:
+   - `scripts/reset_tutorial_state.sh --target all` (dry-run)
+   - `scripts/reset_tutorial_state.sh --target all --apply --confirm RESET` (ejecucion real)
+
 ## Decisiones tecnicas y alternativas descartadas
 - Pipeline declarativo con pasos versionados.
 - Registro obligatorio de modelo antes de deployment.
@@ -38,6 +45,7 @@ Esta fase convierte el ensayo manual de fase 02 en un flujo automatizado de `Mod
 - `RegisterModel` condicionado por metricas para mantener paridad con el gate de calidad de fase 02.
 - `ModelApprovalStatus` inicial en `PendingManualApproval` para encadenar con el gate de despliegue.
 - Trigger por scheduler/orquestacion para ejecuciones periodicas.
+- Naming/tagging consistente para permitir limpieza segura via `scripts/reset_tutorial_state.sh`.
 - Alternativas descartadas: jobs sueltos no orquestados.
 
 ## IAM usado (roles/policies/permisos clave)

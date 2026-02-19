@@ -14,6 +14,9 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
 5. Ejecutar gate de aprobación manual.
 6. Desplegar endpoint `prod`.
 7. (Opcional) Exponer endpoint vía capa ECS/Fargate para consumo API.
+8. Aplicar convencion de limpieza:
+   - nombres de endpoints/configs con prefijo `titanic-`,
+   - tags `project=titanic-sagemaker` y `tutorial_phase=04`.
 
 ## Decisiones tecnicas y alternativas descartadas
 - Endpoint update solo con modelo validado/registrado.
@@ -23,6 +26,7 @@ Publicar inferencia de forma controlada con endpoint de SageMaker y, si aplica, 
   - correr smoke tests,
   - promover a endpoint `prod` solo con gate manual.
 - ECS opcional para API o integracion adicional.
+- Naming/tagging consistente para habilitar cleanup por script (`--target all`).
 - Alternativas descartadas: update directo sin gate.
 
 ## IAM usado (roles/policies/permisos clave)
