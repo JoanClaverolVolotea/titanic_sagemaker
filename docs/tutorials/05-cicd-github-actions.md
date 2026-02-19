@@ -23,6 +23,7 @@ Automatizar validaciones y despliegues de infraestructura/modelo desde GitHub.
    - promoción manual -> despliegue `prod`.
 6. Publicar chequeo de recursos activos post-deploy:
    - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all`
+   - workflow recomendado: `.github/workflows/tutorial-resource-activity-check.yml`
    - almacenar el reporte como artefacto del workflow.
 7. Confirmar trazabilidad completa entre commit -> model package -> endpoints + costo.
 

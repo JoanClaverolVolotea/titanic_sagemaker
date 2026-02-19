@@ -1,0 +1,107 @@
+name: Tutorial Resource Activity Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Tutorial phase to check
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - "00"
+          - "01"
+          - "02"
+          - "03"
+          - "04"
+          - "05"
+          - "06"
+          - "07"
+      fail_if_active:
+        description: Fail run if active resources are detected
+        required: true
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - scripts/check_tutorial_resources_active.sh
+      - docs/tutorials/**
+      - .github/workflows/tutorial-resource-activity-check.yml
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - scripts/check_tutorial_resources_active.sh
+      - docs/tutorials/**
+      - .github/workflows/tutorial-resource-activity-check.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  resource-activity-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate OIDC role secret
+        run: |
+          if [[ -z "${{ secrets.AWS_ROLE_TO_ASSUME }}" ]]; then
+            echo "Missing secret AWS_ROLE_TO_ASSUME"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build data-science-user profile for checker
+        run: |
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID" --profile data-science-user
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile data-science-user
+          aws configure set aws_session_token "$AWS_SESSION_TOKEN" --profile data-science-user
+          aws configure set region "${AWS_REGION}" --profile data-science-user
+          aws configure set output json --profile data-science-user
+
+      - name: Validate checker syntax
+        run: bash -n scripts/check_tutorial_resources_active.sh
+
+      - name: Run resource activity checker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+
+          phase="${{ github.event.inputs.phase }}"
+          if [[ -z "${phase}" ]]; then
+            phase="all"
+          fi
+
+          args=(--phase "${phase}")
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.fail_if_active }}" == "true" ]]; then
+            args+=(--fail-if-active)
+          fi
+
+          set +e
+          AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh "${args[@]}" | tee out/resource_activity_report.txt
+          status=${PIPESTATUS[0]}
+          set -e
+
+          echo "Checker exit code: ${status}"
+          exit "${status}"
+
+      - name: Upload checker report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutorial-resource-activity-report
+          path: out/resource_activity_report.txt
