@@ -496,6 +496,8 @@ aws sagemaker retry-pipeline-execution \
 | `NoSuchKey` al iniciar por `CodeBundleUri` | URI incorrecta o artefacto no subido | validar `s3://$DATA_BUCKET/pipeline/code/$GIT_SHA/pipeline_code.tar.gz` y relanzar con URI exacta |
 | `AccessDenied` en S3/IAM | policy incompleta en role de pipeline o bucket policy | revisar permisos `s3:GetObject`, `s3:ListBucket`, `s3:PutObject` y trust de role `sagemaker.amazonaws.com` |
 | `ConditionStep` no encuentra `metrics.accuracy` | `evaluation.json` con path distinto al esperado | ajustar output de `evaluate.py` para que exista `metrics.accuracy` o corregir `JsonGet` |
+| `TrainModel` falla con `Delimiter ',' is not found in the line` | prefijo `preprocess/validation` contiene archivos heredados no compatibles (por ejemplo `validation_labels.csv`) | limpiar prefijos `preprocess/train` y `preprocess/validation`, luego relanzar con `CodeBundleUri` nuevo para invalidar cache |
+| `ModelEvaluation` falla con `ModuleNotFoundError: No module named 'xgboost'` | imagen de evaluacion no incluye dependencia `xgboost` | usar imagen de evaluacion compatible (`evaluation_image_uri`) y reaplicar pipeline |
 | Ejecucion falla y no recupera con relanzado manual | se requiere retry sobre misma ejecucion o fix en causa deterministica | usar `RetryPipelineExecution` para fallos transitorios; para fallos deterministicos corregir codigo/IAM y ejecutar con nuevo `CodeBundleUri` |
 
 ## Evidencia requerida
@@ -511,7 +513,7 @@ aws sagemaker retry-pipeline-execution \
 2. Pipeline ejecuta end-to-end desde `curated/*`.
 3. Gate de calidad se evalua sobre `metrics.accuracy`.
 4. `RegisterModel` se ejecuta solo si cumple umbral.
-5. Evidencia completa registrada en `docs/iterations/ITER-20260220-01.md`.
+5. Evidencia completa registrada en `docs/iterations/ITER-20260220-02.md`.
 
 ## Riesgos/pendientes
 1. Si faltan scripts fuente en `pipeline/code/`, la ejecucion no es reproducible.

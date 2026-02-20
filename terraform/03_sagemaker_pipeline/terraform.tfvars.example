@@ -1,0 +1,24 @@
+aws_region                    = "eu-west-1"
+aws_profile                   = "data-science-user"
+environment                   = "dev"
+project_name                  = "titanic-sagemaker"
+owner                         = "data-science-user"
+cost_center                   = "data-science"
+
+# Resolve from terraform/00_foundations output
+data_bucket_name              = "titanic-data-bucket-939122281183-data-science-user"
+
+# Immutable bundle URI for current commit
+code_bundle_s3_prefix         = "pipeline/code"
+code_bundle_uri               = "s3://titanic-data-bucket-939122281183-data-science-user/pipeline/code/<commit_sha>/pipeline_code.tar.gz"
+
+pipeline_name                 = "titanic-modelbuild-dev"
+pipeline_role_name            = "titanic-sagemaker-pipeline-dev"
+model_package_group_name      = "titanic-survival-xgboost"
+quality_threshold_accuracy    = 0.78
+model_approval_status         = "PendingManualApproval"
+
+# Override only if needed for your region/image version.
+processing_image_uri          = "141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3"
+evaluation_image_uri          = "141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-xgboost:1.7-1"
+training_image_uri            = "141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-xgboost:1.7-1"
