@@ -3,6 +3,21 @@
 ## Objetivo y contexto
 Implementar carga y versionado de datos Titanic en S3, con separacion de raw, curated y artefactos.
 
+## Resultado minimo esperado
+1. Dataset fuente `titanic.csv` cargado en `raw/`.
+2. Splits `train.csv` y `validation.csv` cargados en `curated/`.
+3. Rutas S3 listas para consumo de SageMaker en fase 02/03.
+4. Evidencia de conteos y lectura de objetos en S3.
+
+## Fuentes oficiales (AWS/S3) usadas en esta fase
+1. `https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html`
+2. `https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-prefixes.html`
+3. `https://docs.aws.amazon.com/cli/latest/reference/s3/cp.html`
+4. `https://docs.aws.amazon.com/cli/latest/reference/s3/ls.html`
+5. `https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html`
+6. `https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingServerSideEncryption.html`
+7. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
+
 ## Prerequisitos concretos
 1. Fase 00 aplicada con Terraform en `terraform/00_foundations`.
 2. Bucket de datos disponible como output de fase 00:
@@ -27,8 +42,8 @@ Implementar carga y versionado de datos Titanic en S3, con separacion de raw, cu
    - `aws s3 cp data/titanic/splits/train.csv s3://$DATA_BUCKET/curated/train.csv --profile data-science-user`
    - `aws s3 cp data/titanic/splits/validation.csv s3://$DATA_BUCKET/curated/validation.csv --profile data-science-user`
 7. Verificar lectura de objetos en S3 por prefijo `raw/` y `curated/`.
-8. Verificar que el bucket usado corresponde a fase 00:
-   - `echo "$DATA_BUCKET"` debe devolver `titanic-data-bucket-939122281183-data-science-user`.
+8. Verificar que el bucket usado corresponde a fase 00 y no esta hardcodeado:
+   - `echo "$DATA_BUCKET"` debe contener un nombre de bucket valido y no vacio.
 
 ## Decisiones tecnicas y alternativas descartadas
 - Estructura S3 por entorno (`dev`/`prod`).

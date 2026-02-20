@@ -3,6 +3,21 @@
 ## Objetivo y contexto
 Definir base del proyecto: cuenta AWS, backend de Terraform state, convenciones de naming/tagging, estrategia de ambientes (`dev` y `prod`) y reglas de colaboracion.
 
+## Resultado minimo esperado
+1. Identidad operativa validada con `data-science-user`.
+2. Estandar de tags obligatorios definido para todos los recursos Terraform.
+3. Flujo base de `terraform fmt/validate/plan` ejecutable.
+4. Arquitectura objetivo de fases `01..07` aprobada y trazable.
+
+## Fuentes oficiales (AWS/IaC) usadas en esta fase
+1. `https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html`
+2. `https://docs.aws.amazon.com/STS/latest/APIReference/API_GetCallerIdentity.html`
+3. `https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html`
+4. `https://docs.aws.amazon.com/tag-editor/latest/userguide/best-practices-and-strats.html`
+5. `https://docs.aws.amazon.com/whitepapers/latest/tagging-best-practices/tagging-best-practices.html`
+6. `https://registry.terraform.io/providers/hashicorp/aws/latest/docs#default_tags`
+7. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
+
 ## Paso a paso (ejecucion)
 1. Confirmar identidad operativa con el perfil unico `data-science-user`.
 2. Validar acceso AWS por perfil:

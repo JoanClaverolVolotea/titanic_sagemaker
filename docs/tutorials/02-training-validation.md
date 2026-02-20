@@ -10,6 +10,19 @@ Resultado minimo esperado al cerrar esta fase:
 3. `metrics.json` con `accuracy`, `precision`, `recall`, `f1`.
 4. `promotion_decision.json` con `pass` o `fail`.
 
+## Fuentes oficiales (SageMaker DG/API) usadas en esta fase
+1. `https://docs.aws.amazon.com/sagemaker/latest/dg/how-it-works-training.html`
+2. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateTrainingJob.html`
+3. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeTrainingJob.html`
+4. `https://docs.aws.amazon.com/sagemaker/latest/dg/xgboost.html`
+5. `https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html`
+6. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateTransformJob.html`
+7. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeTransformJob.html`
+8. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateModel.html`
+9. `https://docs.aws.amazon.com/sagemaker/latest/dg/regions-quotas.html`
+10. `https://docs.aws.amazon.com/servicequotas/latest/userguide/intro.html`
+11. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
+
 ## Alineacion con la arquitectura de referencia (imagen)
 Esta fase es un ensayo manual de la parte central de `ModelBuild` para validar
 dataset, features, hiperparametros y umbral antes de codificar el pipeline de la fase 03.
@@ -29,8 +42,8 @@ Fuera de alcance en esta fase:
 2. Bucket operativo obtenido desde output de fase 00:
    - `terraform -chdir=terraform/00_foundations output -raw data_bucket_name`
 3. Fase 01 completada (dataset cargado en bucket de fase 00):
-   - `s3://titanic-data-bucket-939122281183-data-science-user/curated/train.csv`
-   - `s3://titanic-data-bucket-939122281183-data-science-user/curated/validation.csv`
+   - `s3://<DATA_BUCKET_FROM_PHASE_00>/curated/train.csv`
+   - `s3://<DATA_BUCKET_FROM_PHASE_00>/curated/validation.csv`
 4. Perfil AWS CLI operativo: `data-science-user`.
 5. Un SageMaker execution role existente con permisos a:
    - leer/escribir en el bucket del proyecto,
@@ -98,7 +111,7 @@ aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_UR
      - `train` -> `s3://.../training/xgboost/train_xgb.csv`
      - `validation` -> `s3://.../training/xgboost/validation_xgb.csv`
      - Content type: `text/csv`.
-   - Output path: `s3://titanic-data-bucket-939122281183-data-science-user/training/xgboost/output/`
+   - Output path: `s3://$DATA_BUCKET/training/xgboost/output/`
    - Tipo de instancia: `ml.m5.large`, count `1`.
    - Hyperparameters minimos:
      - `objective=binary:logistic`
@@ -140,7 +153,7 @@ aws sagemaker describe-training-job \
    - Crear `Batch transform job` con:
      - Nombre sugerido: `titanic-xgb-transform-<yyyymmdd-hhmm>`
      - Input: `s3://.../training/xgboost/validation_features_xgb.csv`
-     - Output: `s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/predictions/`
+     - Output: `s3://$DATA_BUCKET/evaluation/xgboost/predictions/`
      - Content type: `text/csv`
      - Split type: `Line`
      - Instance count: `1`
@@ -172,7 +185,7 @@ Opcion A (preferente): Batch Transform
 
 ```bash
 aws s3 cp \
-  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/predictions/ \
+  s3://$DATA_BUCKET/evaluation/xgboost/predictions/ \
   data/titanic/sagemaker/predictions/ \
   --recursive \
   --profile "$AWS_PROFILE"
@@ -293,11 +306,11 @@ PY
 
 ```bash
 aws s3 cp data/titanic/sagemaker/metrics.json \
-  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/metrics.json \
+  s3://$DATA_BUCKET/evaluation/xgboost/metrics.json \
   --profile "$AWS_PROFILE"
 
 aws s3 cp data/titanic/sagemaker/promotion_decision.json \
-  s3://titanic-data-bucket-939122281183-data-science-user/evaluation/xgboost/promotion_decision.json \
+  s3://$DATA_BUCKET/evaluation/xgboost/promotion_decision.json \
   --profile "$AWS_PROFILE"
 ```
 

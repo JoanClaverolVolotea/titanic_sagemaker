@@ -16,6 +16,20 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 2. Fase `04`: siguiente paso ejecutable inmediato (SageMaker serving only: `staging -> smoke -> approval -> prod`).
 3. Fases `05-07`: backlog planificado con gates de cierre; no deben asumirse como cerradas hasta cumplir criterios de aceptacion.
 
+## Alineacion con documentacion AWS (revision tutorial por tutorial)
+Fuente base local:
+- `docs/aws/sagemaker-dg.pdf`
+
+Estado por tutorial:
+1. `00-foundations.md`: alineado con AWS CLI/STS/IAM/tagging y contrato Terraform base.
+2. `01-data-ingestion.md`: alineado con S3 user guide/CLI (`cp`, `ls`, prefixes, seguridad).
+3. `02-training-validation.md`: alineado con SageMaker Training + Batch Transform + quotas.
+4. `03-sagemaker-pipeline.md`: alineado con SageMaker Pipelines SDK/API y Model Registry.
+5. `04-serving-sagemaker.md`: alineado con hosting APIs (`CreateModel`, `CreateEndpoint`, `UpdateEndpoint`, `InvokeEndpoint`).
+6. `05-cicd-github-actions.md`: alineado como backlog con APIs SageMaker + OIDC/GitHub workflows.
+7. `06-observability-operations.md`: alineado como backlog con CloudWatch/EventBridge/Model Monitor.
+8. `07-cost-governance.md`: alineado como backlog con Budgets/Cost Explorer/tagging.
+
 ## How to run this roadmap step by step
 1. Completa `00-foundations.md` y valida identidad/perfil + base Terraform.
 2. Ejecuta `01-data-ingestion.md` y deja `raw/train/validation` en S3.

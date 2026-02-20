@@ -31,6 +31,7 @@ Estado actual de fase 05:
 12. `https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html`
 13. `https://docs.github.com/actions/using-workflows/workflow-syntax-for-github-actions`
 14. `https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment`
+15. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
 
 ## Alcance de implementacion (backlog con estado)
 ### Workflow `model-build.yml` (planned)

@@ -31,6 +31,7 @@ Esta fase usa SageMaker gestionado para ejecucion de steps y mantiene separacion
 10. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_StopPipelineExecution.html`
 11. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html`
 12. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeModelPackage.html`
+13. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
 
 ## Regla de implementacion de notebook (SDK-first)
 La notebook de esta fase debe priorizar `sagemaker` (version mayor 3) como API principal.

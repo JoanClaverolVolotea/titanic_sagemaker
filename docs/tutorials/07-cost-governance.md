@@ -24,6 +24,7 @@ Alcance de esta guia:
 5. `https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html`
 6. `https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html`
 7. `https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html`
+8. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
 
 ## Contrato de costo y gobierno (decision-complete)
 ### 1) Presupuestos requeridos por entorno

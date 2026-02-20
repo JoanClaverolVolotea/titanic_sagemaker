@@ -26,6 +26,7 @@ Alcance de esta guia:
 8. `https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html`
 9. `https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html`
 10. `https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html`
+11. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
 
 ## Backlog implementable de fase 06 (con checks medibles)
 ### Entregable 1 - Alarmas de ejecucion de pipeline (planned)

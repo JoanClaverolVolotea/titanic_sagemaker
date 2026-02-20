@@ -33,6 +33,7 @@ Nota de alcance:
 11. `https://docs.aws.amazon.com/sagemaker/latest/dg/realtime-endpoints.html`
 12. `https://docs.aws.amazon.com/sagemaker/latest/dg/realtime-endpoints-deployment-guardrails.html`
 13. `https://sagemaker.readthedocs.io/en/stable/api/inference/model.html#sagemaker.model.ModelPackage`
+14. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
 
 ## Regla de implementacion de notebook (SDK-first)
 1. Priorizar `sagemaker` (version mayor 3) para session/contexto y deploy base (`ModelPackage.deploy`).
