@@ -6,26 +6,30 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 2. `docs/tutorials/01-data-ingestion.md`
 3. `docs/tutorials/02-training-validation.md`
 4. `docs/tutorials/03-sagemaker-pipeline.md`
-5. `docs/tutorials/04-serving-ecs-sagemaker.md`
+5. `docs/tutorials/04-serving-sagemaker.md`
 6. `docs/tutorials/05-cicd-github-actions.md`
 7. `docs/tutorials/06-observability-operations.md`
 8. `docs/tutorials/07-cost-governance.md`
 
+## Estado actual del roadmap
+1. Fases `00-03`: implementadas y alineadas al estado real del repositorio.
+2. Fase `04`: siguiente paso ejecutable inmediato (SageMaker serving only: `staging -> smoke -> approval -> prod`).
+3. Fases `05-07`: backlog planificado con gates de cierre; no deben asumirse como cerradas hasta cumplir criterios de aceptacion.
+
 ## How to run this roadmap step by step
 1. Completa `00-foundations.md` y valida identidad/perfil + base Terraform.
 2. Ejecuta `01-data-ingestion.md` y deja `raw/train/validation` en S3.
-3. Ejecuta `02-training-validation.md` como ensayo manual de puerta de calidad y documenta umbral + resultado `pass/fail`.
-4. Ejecuta `03-sagemaker-pipeline.md` como flujo MLOps canonico `Processing -> Training -> Evaluation -> Register` y publicar en Model Registry.
-   - separacion explicita: fase 03 arranca desde `curated/*` y resuelve preprocessing dentro del pipeline.
-5. Ejecuta `04-serving-ecs-sagemaker.md` con despliegue `staging -> approval -> prod`.
-6. Automatiza el flujo con `05-cicd-github-actions.md`.
-7. Cierra operación con `06-observability-operations.md`.
-8. Cierra gobierno de costos con `07-cost-governance.md`.
+3. Ejecuta `02-training-validation.md` como ensayo manual de calidad.
+4. Ejecuta `03-sagemaker-pipeline.md` y registra modelo en Model Registry.
+5. Ejecuta `04-serving-sagemaker.md` como fase de serving (sin requerir ECS para cierre).
+6. Implementa backlog de `05-cicd-github-actions.md`.
+7. Implementa backlog de `06-observability-operations.md`.
+8. Implementa backlog de `07-cost-governance.md`.
 
 Criterio global de finalizacion:
-- Existe ejecución reproducible de punta a punta.
-- Hay trazabilidad desde commit hasta modelo en registry y endpoint en `prod`.
-- Hay evidencia operativa y de costo registrada en `docs/iterations/`.
+- Flujo reproducible de punta a punta.
+- Trazabilidad desde commit hasta modelo registrado y endpoint activo.
+- Evidencia operativa y de costo registrada en `docs/iterations/`.
 
 ## Reset de estado por tutorial
 Script oficial:
@@ -67,48 +71,15 @@ Salida esperada:
 ```mermaid
 flowchart TD
   U[data-science-user] --> F0[00 Foundations]
-  F0 --> D1[01 Data Ingestion<br/>Titanic raw/train/validation on S3]
+  F0 --> D1[01 Data Ingestion]
   D1 --> B2[02 Training and Validation]
+  B2 --> P3[03 SageMaker Pipeline\nModel Registry]
+  P3 --> S4[04 Serving SageMaker\nstaging -> smoke -> approval -> prod]
 
-  subgraph MB[ModelBuild CI Pipeline]
-    M0[Source Commit<br/>GitHub] --> M1[Build/Test/Package<br/>GitHub Actions]
-    M1 --> M2[SageMaker Pipeline Execute]
-    M2 --> M3[Processing Step<br/>Data Pre-Processing]
-    M3 --> M4[Training Step<br/>Train Model]
-    M4 --> M5[Processing Step<br/>Model Evaluation]
-    M5 --> M6{Meets quality threshold?}
-    M6 -- yes --> M7[Register Model<br/>SageMaker Model Registry]
-    M6 -- no --> M8[Fail pipeline + notify]
-  end
-
-  B2 --> M0
-  F0 --> C5[05 CI/CD GitHub Actions]
-  C5 --> M0
-
-  subgraph MD[ModelDeploy CD Pipeline]
-    R1[Approved model package] --> S1[Deploy Staging Endpoint]
-    S1 --> S2[Smoke tests]
-    S2 --> G1{Manual approval}
-    G1 -- approved --> P1[Deploy Prod Endpoint]
-    G1 -- rejected --> RB[Rollback/hold release]
-  end
-
-  M7 --> R1
-  R1 --> S1
-  P1 --> S4[04 Serving ECS/SageMaker]
-
-  E0[EventBridge Scheduler] --> SF[Step Functions + Lambda Orchestration]
-  SF --> M2
-
-  S4 --> O6[06 Observability and Operations]
-  S4 --> C7[07 Cost and Governance]
-  O6 --> SF
-  C7 --> SF
+  S4 --> C5[05 CI/CD GitHub Actions\nBacklog]
+  S4 --> O6[06 Observability and Operations\nBacklog]
+  S4 --> G7[07 Cost and Governance\nBacklog]
 ```
-
-Arquitectura objetivo:
-- Equivalente funcional a la imagen de referencia: **ModelBuild -> Model Registry -> ModelDeploy (Staging -> Manual Approval -> Prod)**.
-- En este proyecto, la implementacion recomendada usa `GitHub + GitHub Actions + Terraform` como reemplazo de `CodeCommit/CodeBuild/CodePipeline/CloudFormation`.
 
 ## Titanic dataset files (local source of truth)
 - `data/titanic/raw/titanic.csv` (dataset fuente)
