@@ -1,62 +1,129 @@
 # 07 Cost and Governance
 
 ## Objetivo y contexto
-Controlar costo y riesgo operativo desde el disenio hasta la operacion diaria.
+Controlar costo y riesgo operativo del proyecto con reglas verificables por entorno.
 
-## Paso a paso (ejecucion)
-1. Activar en Billing los Cost Allocation Tags:
-   - `project`, `env`, `owner`, `managed_by`, `cost_center`.
-2. Estandarizar en Terraform futuro:
-   - `provider.aws.default_tags` con las 5 llaves obligatorias,
-   - tags explicitos por recurso/modulo cuando aplique.
-3. Configurar presupuesto mensual por entorno con naming estandar:
-   - `titanic-dev-monthly-cost`,
-   - `titanic-prod-monthly-cost`.
-4. Crear alertas de costo por umbrales (ejemplo 50%, 80%, 100%).
-5. Usar Cost Explorer agrupando por `Tag:project` y `Tag:env` para identificar desviaciones.
-6. Definir horario de apagado/suspensión para recursos no productivos.
-7. Revisar recursos huérfanos en cada iteración (endpoints, jobs, artefactos) con:
-   - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all`.
-8. Registrar acciones correctivas de costo en `docs/iterations/`.
+Objetivo de esta fase:
+1. Definir presupuestos y alertas con criterios explicitos.
+2. Integrar chequeo de recursos activos con operacion diaria.
+3. Establecer disciplina mensual de revision y evidencia.
+
+## Estado actual y alcance
+Estado actual:
+- Esta fase no esta cerrada end-to-end en el repositorio.
+
+Alcance de esta guia:
+1. Convertir fase 07 en backlog ejecutable con gates cuantificables.
+2. Evitar cierre sin presupuesto, alertas y evidencia de revision mensual.
+
+## Fuentes oficiales (Cost/Budgets/Governance)
+1. `https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html`
+2. `https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_Operations_AWS_Budgets.html`
+3. `https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-controls.html`
+4. `https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/cost-alloc-tags.html`
+5. `https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html`
+6. `https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html`
+7. `https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html`
+
+## Contrato de costo y gobierno (decision-complete)
+### 1) Presupuestos requeridos por entorno
+1. `titanic-dev-monthly-cost`
+2. `titanic-prod-monthly-cost`
+
+### 2) Umbrales minimos de alerta
+1. `50%` (warning)
+2. `80%` (high)
+3. `100%` (critical)
+
+### 3) Destinatarios minimos de alerta
+1. Owner tecnico del proyecto.
+2. Responsable de costo/finops del equipo.
+
+### 4) Etiquetas obligatorias
+1. `project=titanic-sagemaker`
+2. `env=<dev|prod>`
+3. `owner=<team-or-user>`
+4. `managed_by=terraform`
+5. `cost_center=<value>`
+
+## Backlog implementable de fase 07 (con checks medibles)
+### Entregable 1 - Budgets operativos (planned)
+Checks:
+1. Existen budgets `dev` y `prod` con umbrales 50/80/100.
+2. Cada budget tiene destinatarios configurados.
+3. Evidencia de consulta CLI en iteracion.
+
+### Entregable 2 - Cost allocation tags activos (planned)
+Checks:
+1. Tags de costo activados en Billing.
+2. Cost Explorer permite agrupar por `Tag:project` y `Tag:env`.
+3. Evidencia de captura/reporte en iteracion.
+
+### Entregable 3 - Control de recursos activos (planned)
+Checks:
+1. Ejecucion periodica de `scripts/check_tutorial_resources_active.sh --phase all`.
+2. Hallazgos clasificados (`active/inactive/unknown`) con accion correctiva.
+3. Gate opcional en CI con `--fail-if-active` para ventanas definidas.
+
+### Entregable 4 - Politica de apagado no-prod (planned)
+Checks:
+1. Horario definido para apagar/suspender recursos no prod.
+2. Evidencia de schedule activo (Scheduler/EventBridge).
+3. Verificacion de cumplimiento en revision mensual.
 
 ## Decisiones tecnicas y alternativas descartadas
-- Budgets y alertas por entorno.
-- Naming estandar de budgets por ambiente (`titanic-<env>-monthly-cost`).
-- Scheduler para apagar recursos no prod cuando aplique.
-- Tagging obligatorio para trazabilidad financiera.
-- Cost allocation tags activados en Billing para obtener trazabilidad en Cost Explorer.
-- Controlar costo de endpoints `staging`/`prod` y ejecuciones programadas del pipeline.
+1. Presupuestos por entorno con naming fijo para trazabilidad.
+2. Alertas escalonadas 50/80/100 para respuesta temprana.
+3. Chequeo de recursos activos como control operativo recurrente.
+4. Descartado: control de costo reactivo solo al cierre de mes.
 
 ## IAM usado (roles/policies/permisos clave)
-- Permisos de lectura de costos y presupuesto para operador DS.
-- Permisos acotados para scheduler y acciones de stop/start.
-- Operador humano con usuario `data-science-user` y keys logicas `data-science-user-primary` / `data-science-user-rotation`.
+1. Identidad base: `data-science-user`.
+2. Permisos de lectura de Budgets/Cost Explorer para operador DS.
+3. Permisos acotados para scheduler y acciones stop/start cuando aplique.
+4. Mantener least-privilege y evitar wildcard sin justificacion.
 
 ## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con `data-science-user` como base y perfil `data-science-user`.
-- Verificar budgets por cuenta:
-  - `aws budgets describe-budgets --account-id 939122281183 --profile data-science-user --region eu-west-1`
-- Auditar recursos potencialmente activos/orfanos:
-  - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all`
-- Validacion de schedules de apagado.
-- Resultado esperado: costo dentro de umbrales definidos.
+```bash
+export AWS_PROFILE=data-science-user
+export AWS_REGION=eu-west-1
 
-## Evidencia
-Agregar:
-- Captura de Cost Allocation Tags activos en Billing.
-- Umbrales y alertas configuradas por budget (`dev`/`prod`).
-- Resultado del checker `--phase all` para control de recursos activos.
-- Prueba de acciones programadas de ahorro.
+# Budgets
+aws budgets describe-budgets \
+  --account-id 939122281183 \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION"
+
+# Recursos activos/orfanos
+AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all
+
+# Gate operativo opcional
+AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all --fail-if-active
+```
+
+Resultado esperado:
+1. Budgets visibles por entorno.
+2. Reporte de recursos activos disponible.
+3. Hallazgos con accion correctiva documentada.
+
+## Evidencia requerida (checklist mensual)
+1. Snapshot de budgets `dev/prod` con estado y umbrales.
+2. Evidencia de alertas emitidas (si aplica) y acciones tomadas.
+3. Resultado del checker `--phase all` con fecha.
+4. Lista de recursos apagados/limpiados en no-produccion.
+5. Registro de desviaciones y plan de correccion para el mes siguiente.
 
 ## Criterio de cierre
-- Presupuestos y alertas activos por entorno.
-- Cost Explorer usable por `Tag:project` y `Tag:env`.
-- Programación de ahorro validada para no-producción.
-- No hay recursos críticos sin tags obligatorios.
+1. Presupuestos `titanic-dev-monthly-cost` y `titanic-prod-monthly-cost` activos.
+2. Alertas 50/80/100 con destinatarios definidos.
+3. Checker de recursos activos integrado en operacion recurrente.
+4. Politica de apagado no-prod definida y verificada.
+5. Evidencia mensual registrada en `docs/iterations/`.
 
 ## Riesgos/pendientes
-- Recursos huerfanos sin tags.
-- Costos inesperados por endpoints activos 24/7.
+1. Recursos con tags incompletos que no entran al analisis de costo.
+2. Endpoints sin schedule de ahorro en no-produccion.
+3. Alertas ignoradas por falta de ownership operativo.
 
 ## Proximo paso
-Registrar iteraciones en `docs/iterations/`.
+Registrar cada ciclo mensual de costo en `docs/iterations/` y mantener sincronia con decisiones de fases 04-06.
