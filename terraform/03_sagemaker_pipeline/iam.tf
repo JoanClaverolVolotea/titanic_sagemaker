@@ -72,7 +72,10 @@ data "aws_iam_policy_document" "pipeline_permissions" {
       "logs:DescribeLogStreams",
       "logs:PutLogEvents"
     ]
-    resources = ["*"]
+    resources = [
+      "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/*",
+      "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/*:log-stream:*"
+    ]
   }
 
   statement {
@@ -100,9 +103,6 @@ data "aws_iam_policy_document" "pipeline_permissions" {
       "sagemaker:CreateTrainingJob",
       "sagemaker:CreateTrial",
       "sagemaker:CreateTrialComponent",
-      "sagemaker:DeleteEndpoint",
-      "sagemaker:DeleteEndpointConfig",
-      "sagemaker:DeleteModel",
       "sagemaker:Describe*",
       "sagemaker:List*",
       "sagemaker:StopProcessingJob",

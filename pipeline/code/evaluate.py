@@ -40,6 +40,29 @@ def safe_div(num: float, den: float) -> float:
     return num / den if den else 0.0
 
 
+def _is_within_dir(base_dir: Path, target: Path) -> bool:
+    base_resolved = base_dir.resolve()
+    target_resolved = target.resolve()
+    try:
+        target_resolved.relative_to(base_resolved)
+        return True
+    except ValueError:
+        return False
+
+
+def safe_extract_tar(tar: tarfile.TarFile, extract_dir: Path) -> None:
+    for member in tar.getmembers():
+        member_path = extract_dir / member.name
+
+        # Block traversal and symlink/hardlink abuse from untrusted archives.
+        if member.issym() or member.islnk():
+            raise ValueError(f"Refusing to extract link entry from archive: {member.name}")
+        if not _is_within_dir(extract_dir, member_path):
+            raise ValueError(f"Refusing to extract path outside target dir: {member.name}")
+
+    tar.extractall(extract_dir)
+
+
 def ensure_model_file(model_artifact: Path) -> Path:
     if model_artifact.is_file() and model_artifact.suffix == ".json":
         return model_artifact
@@ -48,7 +71,7 @@ def ensure_model_file(model_artifact: Path) -> Path:
     extract_dir.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(model_artifact, "r:gz") as tar:
-        tar.extractall(extract_dir)
+        safe_extract_tar(tar, extract_dir)
 
     # Built-in XGBoost commonly stores model as xgboost-model
     candidates = [
