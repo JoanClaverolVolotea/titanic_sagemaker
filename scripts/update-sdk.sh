@@ -72,7 +72,7 @@ main() {
 
   tmp_dir="$(mktemp -d)"
   clone_dir="${tmp_dir}/sagemaker-python-sdk"
-  trap 'rm -rf "${tmp_dir}"' EXIT
+  trap "rm -rf -- '${tmp_dir}'" EXIT
 
   info "Cloning ${REMOTE_URL} (${UPSTREAM_BRANCH})"
   git clone --depth 1 --branch "${UPSTREAM_BRANCH}" "${REMOTE_URL}" "${clone_dir}" >/dev/null
