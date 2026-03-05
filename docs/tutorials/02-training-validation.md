@@ -64,6 +64,7 @@ Fuera de alcance en esta fase:
 | Clase de estimador | `sagemaker.estimator.Estimator` | `sagemaker.train.ModelTrainer` |
 | Tipo de instancia | Parametro directo `instance_type=` | `Compute(instance_type=..., instance_count=...)` |
 | Datos de entrada | `TrainingInput(s3_data=...)` | `InputData(channel_name=..., data_source=...)` |
+| Output data | `output_path=` directo | `OutputDataConfig(s3_output_path=...)` |
 | Image URIs | `sagemaker.image_uris.retrieve()` | `sagemaker.core.image_uris.retrieve()` |
 | Session | `sagemaker.Session()` | `sagemaker.core.helper.session_helper.Session()` |
 
@@ -120,7 +121,7 @@ import boto3
 from sagemaker.core.helper.session_helper import Session
 from sagemaker.core import image_uris
 from sagemaker.train import ModelTrainer
-from sagemaker.train.configs import Compute, InputData
+from sagemaker.train.configs import Compute, InputData, OutputDataConfig
 
 # --- Bootstrap de sesion ---
 AWS_PROFILE = os.getenv("AWS_PROFILE", "data-science-user")
@@ -162,9 +163,9 @@ model_trainer = ModelTrainer(
         "subsample": 0.8,
         "eval_metric": "logloss",
     },
-    output_data_config={
-        "s3_output_path": f"s3://{DATA_BUCKET}/training/xgboost/output",
-    },
+    output_data_config=OutputDataConfig(
+        s3_output_path=f"s3://{DATA_BUCKET}/training/xgboost/output",
+    ),
     input_data_config=[
         InputData(
             channel_name="train",
