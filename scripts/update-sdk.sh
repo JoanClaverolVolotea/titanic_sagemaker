@@ -1,27 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_NAME="${REMOTE_NAME:-sagemaker-sdk}"
 REMOTE_URL="${REMOTE_URL:-https://github.com/aws/sagemaker-python-sdk.git}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-master}"
 VENDOR_PATH="${VENDOR_PATH:-vendor/sagemaker-python-sdk}"
 
-TEMP_COMMIT_MSG="temp: re-track vendored sagemaker sdk for subtree pull"
-FINAL_COMMIT_MSG="chore: refresh local-only vendored sagemaker sdk"
-
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/update-sdk.sh [--branch <name>] [--message <commit message>] [--allow-dirty]
+  scripts/update-sdk.sh [--branch <name>] [--repo-url <url>]
 
 Options:
   --branch <name>    Upstream branch to pull (default: master)
-  --message <text>   Final commit message (default: chore: refresh local-only vendored sagemaker sdk)
-  --allow-dirty      Skip clean working tree check
+  --repo-url <url>   Upstream repo URL
   -h, --help         Show this help
 
 Environment overrides:
-  REMOTE_NAME, REMOTE_URL, UPSTREAM_BRANCH, VENDOR_PATH
+  REMOTE_URL, UPSTREAM_BRANCH, VENDOR_PATH
 USAGE
 }
 
@@ -34,8 +29,6 @@ info() {
   printf '[INFO] %s\n' "$*"
 }
 
-ALLOW_DIRTY=0
-
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -43,12 +36,9 @@ parse_args() {
         UPSTREAM_BRANCH="${2:-}"
         shift
         ;;
-      --message)
-        FINAL_COMMIT_MSG="${2:-}"
+      --repo-url)
+        REMOTE_URL="${2:-}"
         shift
-        ;;
-      --allow-dirty)
-        ALLOW_DIRTY=1
         ;;
       -h|--help)
         usage
@@ -67,51 +57,32 @@ ensure_git_repo() {
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Run this script inside a git repository"
 }
 
-ensure_clean_tree() {
-  if (( ALLOW_DIRTY == 1 )); then
-    return
-  fi
-
-  if [[ -n "$(git status --porcelain)" ]]; then
-    die "Working tree is not clean. Commit/stash changes or rerun with --allow-dirty"
-  fi
-}
-
-ensure_remote() {
-  if git remote get-url "${REMOTE_NAME}" >/dev/null 2>&1; then
-    return
-  fi
-
-  info "Adding remote ${REMOTE_NAME} -> ${REMOTE_URL}"
-  git remote add "${REMOTE_NAME}" "${REMOTE_URL}"
-}
-
-ensure_vendor_exists() {
-  [[ -d "${VENDOR_PATH}" ]] || die "Vendor path not found: ${VENDOR_PATH}"
+ensure_tools() {
+  command -v git >/dev/null 2>&1 || die "git is required"
+  command -v rsync >/dev/null 2>&1 || die "rsync is required"
 }
 
 main() {
+  local tmp_dir
+  local clone_dir
+
   parse_args "$@"
   ensure_git_repo
-  ensure_clean_tree
-  ensure_remote
-  ensure_vendor_exists
+  ensure_tools
 
-  info "Fetching ${REMOTE_NAME}/${UPSTREAM_BRANCH}"
-  git fetch "${REMOTE_NAME}" "${UPSTREAM_BRANCH}"
+  tmp_dir="$(mktemp -d)"
+  clone_dir="${tmp_dir}/sagemaker-python-sdk"
+  trap 'rm -rf "${tmp_dir}"' EXIT
 
-  info "Temporarily re-tracking ${VENDOR_PATH}"
-  git add -f "${VENDOR_PATH}"
-  git commit -m "${TEMP_COMMIT_MSG}"
+  info "Cloning ${REMOTE_URL} (${UPSTREAM_BRANCH})"
+  git clone --depth 1 --branch "${UPSTREAM_BRANCH}" "${REMOTE_URL}" "${clone_dir}" >/dev/null
 
-  info "Pulling subtree updates"
-  git subtree pull --prefix="${VENDOR_PATH}" "${REMOTE_NAME}" "${UPSTREAM_BRANCH}" --squash
+  mkdir -p "${VENDOR_PATH}"
 
-  info "Untracking ${VENDOR_PATH} again"
-  git rm -r --cached "${VENDOR_PATH}"
-  git commit -m "${FINAL_COMMIT_MSG}"
+  info "Refreshing ${VENDOR_PATH} from upstream"
+  rsync -a --delete --exclude ".git" "${clone_dir}/" "${VENDOR_PATH}/"
 
-  info "Done. ${VENDOR_PATH} remains local-only via .gitignore"
+  info "Done. ${VENDOR_PATH} is updated locally and remains gitignored"
 }
 
 main "$@"
