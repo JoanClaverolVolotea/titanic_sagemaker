@@ -1,6 +1,6 @@
 # Tutorial roadmap
 
-Tutoriales por fase del proyecto Titanic SageMaker:
+Roadmap oficial de tutoriales del proyecto Titanic SageMaker (alineado a SDK V3):
 
 1. `docs/tutorials/00-foundations.md`
 2. `docs/tutorials/01-data-ingestion.md`
@@ -11,41 +11,62 @@ Tutoriales por fase del proyecto Titanic SageMaker:
 7. `docs/tutorials/06-observability-operations.md`
 8. `docs/tutorials/07-cost-governance.md`
 
-## Estado actual del roadmap
-1. Fases `00-03`: implementadas y alineadas al estado real del repositorio.
-2. Fase `04`: siguiente paso ejecutable inmediato (SageMaker serving only: `staging -> smoke -> approval -> prod`).
-3. Fases `05-07`: backlog planificado con gates de cierre; no deben asumirse como cerradas hasta cumplir criterios de aceptacion.
+## Principios del roadmap
+1. Cada tutorial es autocontenido: objetivo, prerequisitos, comandos, validacion y evidencia.
+2. Toda guia de SageMaker usa patrones SDK V3 (`sagemaker>=3.5.0`).
+3. Toda operacion AWS se ejecuta con el perfil `data-science-user`.
+4. No se considera una fase cerrada sin evidencia en `docs/iterations/`.
 
-## Alineacion con documentacion AWS (revision tutorial por tutorial)
-Fuente base local:
-- `docs/aws/sagemaker-dg.pdf`
+## Alineacion con documentacion oficial local
+Fuente de verdad para SDK:
+- `vendor/sagemaker-python-sdk/docs/`
+- `vendor/sagemaker-python-sdk/docs/api/`
+- `vendor/sagemaker-python-sdk/v3-examples/`
+- `vendor/sagemaker-python-sdk/migration.md`
 
 Estado por tutorial:
-1. `00-foundations.md`: alineado con AWS CLI/STS/IAM/tagging y contrato Terraform base.
-2. `01-data-ingestion.md`: alineado con S3 user guide/CLI (`cp`, `ls`, prefixes, seguridad).
-3. `02-training-validation.md`: alineado con SageMaker Training + Batch Transform + quotas.
-4. `03-sagemaker-pipeline.md`: alineado con SageMaker Pipelines SDK/API y Model Registry.
-5. `04-serving-sagemaker.md`: alineado con hosting APIs (`CreateModel`, `CreateEndpoint`, `UpdateEndpoint`, `InvokeEndpoint`).
-6. `05-cicd-github-actions.md`: alineado como backlog con APIs SageMaker + OIDC/GitHub workflows.
-7. `06-observability-operations.md`: alineado como backlog con CloudWatch/EventBridge/Model Monitor.
-8. `07-cost-governance.md`: alineado como backlog con Budgets/Cost Explorer/tagging.
+1. `00-foundations.md`: base AWS/IAM/Terraform + setup de SageMaker SDK V3.
+2. `01-data-ingestion.md`: ingestion S3 y validacion de acceso con `Session` V3.
+3. `02-training-validation.md`: training manual con `ModelTrainer` V3 + evaluacion.
+4. `03-sagemaker-pipeline.md`: pipeline SDK-driven V3 (`Pipeline`, `TrainingStep`, `ModelStep`).
+5. `04-serving-sagemaker.md`: serving con `ModelBuilder` V3 + gate `staging -> prod`.
+6. `05-cicd-github-actions.md`: backlog ejecutable de CI/CD con OIDC + SageMaker V3.
+7. `06-observability-operations.md`: backlog ejecutable de alarmas, EventBridge y monitor.
+8. `07-cost-governance.md`: backlog ejecutable de budgets, tags y control de recursos.
 
 ## How to run this roadmap step by step
-1. Completa `00-foundations.md` y valida identidad/perfil + base Terraform.
-2. Ejecuta `01-data-ingestion.md` y deja `raw/train/validation` en S3.
-3. Ejecuta `02-training-validation.md` como ensayo manual de calidad.
+1. Completa `00-foundations.md` (identidad, perfil, SDK V3, base Terraform).
+2. Ejecuta `01-data-ingestion.md` y deja `raw/curated` en S3.
+3. Ejecuta `02-training-validation.md` para baseline de calidad.
 4. Ejecuta `03-sagemaker-pipeline.md` y registra modelo en Model Registry.
-5. Ejecuta `04-serving-sagemaker.md` como fase de serving (sin requerir ECS para cierre).
-6. Implementa backlog de `05-cicd-github-actions.md`.
-7. Implementa backlog de `06-observability-operations.md`.
-8. Implementa backlog de `07-cost-governance.md`.
+5. Ejecuta `04-serving-sagemaker.md` para publicar `staging` y luego `prod`.
+6. Implementa `05-cicd-github-actions.md` para automatizar build/deploy.
+7. Implementa `06-observability-operations.md` para alarmas y runbooks.
+8. Implementa `07-cost-governance.md` para presupuesto y control de gasto.
 
 Criterio global de finalizacion:
 - Flujo reproducible de punta a punta.
 - Trazabilidad desde commit hasta modelo registrado y endpoint activo.
-- Evidencia operativa y de costo registrada en `docs/iterations/`.
+- Evidencia operativa y de costo en `docs/iterations/`.
 
-## Reset de estado por tutorial
+## End-to-End process (Mermaid)
+
+```mermaid
+flowchart TD
+  U[data-science-user] --> F0[00 Foundations\nAWS + Terraform + SDK V3]
+  F0 --> D1[01 Data Ingestion\nS3 raw/curated]
+  D1 --> B2[02 Training and Validation\nModelTrainer V3]
+  B2 --> P3[03 SageMaker Pipeline\nPipeline SDK V3 + Model Registry]
+  P3 --> S4[04 Serving SageMaker\nModelBuilder V3\nstaging -> smoke -> approval -> prod]
+
+  S4 --> C5[05 CI/CD GitHub Actions\nExecutable backlog]
+  S4 --> O6[06 Observability and Operations\nExecutable backlog]
+  S4 --> G7[07 Cost and Governance\nExecutable backlog]
+```
+
+## Scripts operativos del roadmap
+
+### Reset de estado
 Script oficial:
 - `scripts/reset_tutorial_state.sh`
 
@@ -62,52 +83,32 @@ Guardrails:
 - Perfil obligatorio `data-science-user`.
 - Borrado real solo con `--apply --confirm RESET`.
 
-## Verificacion de recursos activos (operacion/costo)
+### Verificacion de recursos activos
 Script oficial:
 - `scripts/check_tutorial_resources_active.sh`
 
 Modos recomendados:
-1. Revision global de recursos del roadmap:
+1. Revision global:
    - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all`
-2. Revision puntual por fase:
+2. Revision por fase:
    - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase 04`
    - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase 07`
-3. Gate para CI/smoke de gobierno:
+3. Gate de CI/smoke:
    - `AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all --fail-if-active`
 
-Salida esperada:
-- Resumen por servicio con conteos `active`, `inactive`, `unknown`.
-- Detalle de recursos filtrados por `project=titanic-sagemaker` o prefijo `titanic-`.
-- Warnings sin abortar en caso de permisos faltantes por servicio.
-
-## End-to-End process (Mermaid)
-
-```mermaid
-flowchart TD
-  U[data-science-user] --> F0[00 Foundations]
-  F0 --> D1[01 Data Ingestion]
-  D1 --> B2[02 Training and Validation]
-  B2 --> P3[03 SageMaker Pipeline\nModel Registry]
-  P3 --> S4[04 Serving SageMaker\nstaging -> smoke -> approval -> prod]
-
-  S4 --> C5[05 CI/CD GitHub Actions\nBacklog]
-  S4 --> O6[06 Observability and Operations\nBacklog]
-  S4 --> G7[07 Cost and Governance\nBacklog]
-```
-
 ## Titanic dataset files (local source of truth)
-- `data/titanic/raw/titanic.csv` (dataset fuente)
-- `data/titanic/splits/train.csv` (dataset de entrenamiento)
-- `data/titanic/splits/validation.csv` (dataset de validacion)
+- `data/titanic/raw/titanic.csv`
+- `data/titanic/splits/train.csv`
+- `data/titanic/splits/validation.csv`
 
-Iteraciones historicas:
-- `docs/iterations/`
-
-Convencion de credenciales para todos los tutoriales:
+## Convencion de credenciales
 - IAM user: `data-science-user`
 - Access keys logicas: `data-science-user-primary` y `data-science-user-rotation`
 - Perfil AWS CLI: `data-science-user`
 
-Regla global de ejecucion AWS:
-- Toda operacion AWS del proyecto debe ejecutarse desde `data-science-user` como identidad principal.
-- Para trabajo por entorno mantener el mismo perfil `data-science-user` y cambiar solo recursos/variables de entorno.
+Regla global:
+- Toda operacion AWS del proyecto debe ejecutarse desde `data-science-user`.
+- Para trabajo por entorno mantener el mismo perfil y cambiar solo recursos/variables.
+
+## Iteraciones historicas
+- `docs/iterations/`

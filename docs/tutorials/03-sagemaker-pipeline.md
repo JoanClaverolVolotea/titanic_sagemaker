@@ -1,202 +1,145 @@
 # 03 SageMaker Pipeline
 
 ## Objetivo y contexto
-Construir el flujo MLOps canonico de `ModelBuild` en SageMaker Pipelines:
-`DataPreProcessing -> TrainModel -> ModelEvaluation -> RegisterModel`.
+Construir el flujo MLOps canonico de `ModelBuild` en SageMaker Pipelines usando el SDK V3:
+`DataPreProcessing -> TrainModel -> ModelEvaluation -> QualityGate -> RegisterModel`.
 
-Esta fase usa SageMaker gestionado para ejecucion de steps y mantiene separacion estricta:
-1. Terraform despliega recursos estables (IAM, Model Package Group, definicion de pipeline).
-2. La ejecucion del pipeline crea recursos runtime (processing/training/evaluation jobs, artefactos y versiones de model package).
-3. Las entradas externas de datos son solo:
-   - `s3://.../curated/train.csv`
-   - `s3://.../curated/validation.csv`
-4. No se usa contenedor propio en ECR en esta fase.
+Esta fase usa un enfoque SDK-driven: la definicion del pipeline se construye en Python
+con clases V3 y se publica via `pipeline.upsert()`. Terraform gestiona infraestructura
+estable (IAM, Model Package Group). La ejecucion del pipeline crea recursos runtime
+(processing/training/evaluation jobs, artefactos y versiones de model package).
 
 ## Resultado minimo esperado
-1. Infraestructura Terraform de fase 03 creada y versionada.
-2. Pipeline de SageMaker publicado y ejecutable.
+1. Infraestructura Terraform de fase 03 creada (IAM role, Model Package Group).
+2. Pipeline de SageMaker definido y publicado via SDK V3.
 3. Ejecucion de pipeline con pasos completados en orden.
 4. Registro de modelo en Model Registry cuando cumple el umbral (`accuracy >= 0.78`) con `PendingManualApproval`.
 
-## Fuentes oficiales (SageMaker DG) usadas en esta fase
-1. `https://sagemaker.readthedocs.io/en/stable/workflows/pipelines/sagemaker.workflow.pipelines.html`
-2. `https://sagemaker.readthedocs.io/en/stable/workflows/pipelines/sagemaker.workflow.pipelines.html#sagemaker.workflow.steps.ProcessingStep`
-3. `https://sagemaker.readthedocs.io/en/stable/workflows/pipelines/sagemaker.workflow.pipelines.html#sagemaker.workflow.steps.TrainingStep`
-4. `https://sagemaker.readthedocs.io/en/stable/workflows/pipelines/sagemaker.workflow.pipelines.html#sagemaker.workflow.condition_step.ConditionStep`
-5. `https://sagemaker.readthedocs.io/en/stable/workflows/pipelines/sagemaker.workflow.pipelines.html#sagemaker.workflow.step_collections.RegisterModel`
-6. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_StartPipelineExecution.html`
-7. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribePipelineExecution.html`
-8. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ListPipelineExecutionSteps.html`
-9. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_RetryPipelineExecution.html`
-10. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_StopPipelineExecution.html`
-11. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html`
-12. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeModelPackage.html`
-13. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
+## Fuentes oficiales usadas en esta fase
+1. SageMaker V3 MLOps/Pipelines: `vendor/sagemaker-python-sdk/docs/ml_ops/index.rst`
+2. Pipeline API: `vendor/sagemaker-python-sdk/docs/api/sagemaker_mlops.rst`
+3. Core workflow primitives: `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/workflow/`
+4. V3 pipeline example: `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-pipeline-train-create-registry.ipynb`
+5. ModelTrainer: `vendor/sagemaker-python-sdk/docs/training/index.rst`
+6. ScriptProcessor: `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/processing.py`
+7. ModelBuilder: `vendor/sagemaker-python-sdk/docs/inference/index.rst`
+8. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html`
 
-## Regla de implementacion de notebook (SDK-first)
-La notebook de esta fase debe priorizar `sagemaker` (version mayor 3) como API principal.
+## V2 -> V3: que cambio en esta fase
 
-Reglas:
-1. Usar `sagemaker` v3 para session, definicion/ejecucion de pipeline y registro de modelo.
-2. Usar `boto3` solo cuando una operacion no este cubierta claramente por el SDK o para diagnostico.
-3. Cuando se use `boto3`, documentar en la celda el motivo y el recurso afectado.
-4. Operar con identidad base `data-science-user`.
+Este tutorial tiene los cambios mas significativos de V2 a V3. Tabla de referencia completa:
+
+| Concepto | V2 (anterior) | V3 (actual) |
+|---|---|---|
+| Pipeline | `from sagemaker.workflow.pipeline import Pipeline` | `from sagemaker.mlops.workflow.pipeline import Pipeline` |
+| TrainingStep | `from sagemaker.workflow.steps import TrainingStep` | `from sagemaker.mlops.workflow.steps import TrainingStep` |
+| ProcessingStep | `from sagemaker.workflow.steps import ProcessingStep` | `from sagemaker.mlops.workflow.steps import ProcessingStep` |
+| CacheConfig | `from sagemaker.workflow.steps import CacheConfig` | `from sagemaker.mlops.workflow.steps import CacheConfig` |
+| ConditionStep | `from sagemaker.workflow.condition_step import ConditionStep` | `from sagemaker.mlops.workflow import ConditionStep` |
+| RegisterModel | `from sagemaker.workflow.step_collections import RegisterModel` | `from sagemaker.mlops.workflow.model_step import ModelStep` + `ModelBuilder.register()` |
+| Parameters | `from sagemaker.workflow.parameters import ParameterString` | `from sagemaker.core.workflow.parameters import ParameterString` |
+| Conditions | `from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo` | `from sagemaker.core.workflow.conditions import ConditionGreaterThanOrEqualTo` |
+| JsonGet | `from sagemaker.workflow.functions import JsonGet` | `from sagemaker.core.workflow.functions import JsonGet` |
+| PropertyFile | `from sagemaker.workflow.properties import PropertyFile` | `from sagemaker.core.workflow.properties import PropertyFile` |
+| PipelineSession | `from sagemaker.workflow.pipeline_context import PipelineSession` | `from sagemaker.core.workflow.pipeline_context import PipelineSession` |
+| ScriptProcessor | `from sagemaker.processing import ScriptProcessor` | `from sagemaker.core.processing import ScriptProcessor` |
+| ProcessingInput | `from sagemaker.processing import ProcessingInput` | `from sagemaker.core.shapes import ProcessingInput, ProcessingS3Input` |
+| ProcessingOutput | `from sagemaker.processing import ProcessingOutput` | `from sagemaker.core.shapes import ProcessingOutput, ProcessingS3Output` |
+| Estimator | `from sagemaker.estimator import Estimator` | `from sagemaker.train import ModelTrainer` |
+| TrainingInput | `from sagemaker.inputs import TrainingInput` | `from sagemaker.train.configs import InputData, Compute` |
+| Image URIs | `from sagemaker.image_uris import retrieve` | `from sagemaker.core import image_uris` |
+
+Referencia de migracion: `vendor/sagemaker-python-sdk/migration.md`
+
+## Prerequisitos concretos
+1. Fase 00 completada (SDK V3 instalado, Terraform foundations aplicado).
+2. Fase 01 completada (datos en S3: `curated/train.csv`, `curated/validation.csv`).
+3. Fase 02 completada (baseline de training validado, umbral de calidad definido).
+4. Perfil AWS CLI: `data-science-user`.
+5. Deben existir en el repo:
+   - `pipeline/code/preprocess.py`
+   - `pipeline/code/evaluate.py`
+6. Ejecutar desde la raiz del repositorio.
 
 ## Contrato de pipeline (parametros, entradas, gate de calidad)
+
 ### Parametros obligatorios
 | Parametro | Tipo | Default recomendado | Proposito |
 |---|---|---|---|
-| `CodeBundleUri` | String | `s3://<bucket>/pipeline/code/<git_sha>/pipeline_code.tar.gz` | Bundle de codigo versionado por commit |
+| `CodeBundleUri` | String | `s3://<bucket>/pipeline/code/<git_sha>/pipeline_code.tar.gz` | Bundle de codigo versionado |
 | `InputTrainUri` | String | `s3://<bucket>/curated/train.csv` | Entrada de train |
 | `InputValidationUri` | String | `s3://<bucket>/curated/validation.csv` | Entrada de validation |
 | `AccuracyThreshold` | Float | `0.78` | Umbral de gate para registro |
 
 ### Gate de calidad
-1. `ModelEvaluation` debe emitir `evaluation.json` con ruta JSON `metrics.accuracy`.
+1. `ModelEvaluation` emite `evaluation.json` con ruta JSON `metrics.accuracy`.
 2. `ConditionStep` compara `metrics.accuracy` contra `AccuracyThreshold`.
 3. Si cumple, se ejecuta `RegisterModel` con `PendingManualApproval`.
 
-### Split Terraform vs runtime (obligatorio)
-1. Terraform despliega recursos estables:
-   - role/policies,
-   - model package group,
-   - `aws_sagemaker_pipeline`.
-2. La ejecucion del pipeline crea recursos runtime:
-   - processing/training/evaluation jobs,
-   - artefactos en S3,
-   - versiones de model package.
-
-### Contrato Terraform de fase 03 (decision-complete)
-#### 1) Tabla de recursos Terraform (resource contract)
-| Recurso | Archivo | Proposito | Entradas obligatorias | Dependencias | Salidas/consumidores |
-|---|---|---|---|---|---|
-| `aws_iam_role.pipeline_execution` | `iam.tf` | Role de ejecucion usado por Processing/Training/Pipeline steps | `pipeline_role_name`, trust policy `sagemaker.amazonaws.com`, tags obligatorios | provider AWS activo, naming valido, perfil `data-science-user` | Consumido por `aws_sagemaker_pipeline.this.role_arn` y por `iam:PassRole` |
-| `aws_iam_role_policy.pipeline_permissions` | `iam.tf` | Least-privilege operativo para S3, SageMaker, ECR, CloudWatch, PassRole | `data_bucket_name`, `aws_iam_role.pipeline_execution.arn` | `aws_iam_role.pipeline_execution` | Habilita ejecucion end-to-end de jobs runtime |
-| `aws_sagemaker_model_package_group.this` | `model_registry.tf` | Grupo de registro para versiones de modelo de fase 03 | `model_package_group_name`, tags | permisos `sagemaker:*` para crear/leer group | Consumido por `RegisterModel` en la definicion de pipeline |
-| `aws_sagemaker_pipeline.this` | `sagemaker_pipeline.tf` | Publica pipeline `ModelBuild` (DAG + parametros) | `pipeline_name`, `aws_iam_role.pipeline_execution.arn`, `local.pipeline_definition` | `aws_iam_role_policy.pipeline_permissions`, `aws_sagemaker_model_package_group.this` (via `depends_on`) | `pipeline_name`, `pipeline_arn` para ejecucion y monitoreo |
-| `local.pipeline_definition` + `templatefile(...)` | `locals.tf` + `pipeline_definition.json.tpl` | Artefacto de definicion canonica del pipeline (steps, cache, gate, register) | `code_bundle_uri`, `data_bucket_name`, `pipeline_name`, `processing_image_uri`, `evaluation_image_uri`, `training_image_uri`, `model_package_group_name`, `quality_threshold_accuracy`, `model_approval_status` | existencia de role y model package group para interpolaciones | Consumido por `aws_sagemaker_pipeline.this.pipeline_definition` |
-| `outputs` contract | `outputs.tf` | Exporta valores operativos para notebook/CLI/evidencia | recursos creados (`aws_sagemaker_pipeline.this`, `aws_iam_role.pipeline_execution`, `aws_sagemaker_model_package_group.this`) | apply exitoso | Alimenta `SAGEMAKER_PIPELINE_ROLE_ARN`, monitoreo y evidencia de iteracion |
-
-#### 2) Mapa de archivos que se deben crear/completar
-1. `versions.tf`: version de Terraform/proveedor + bloque de backend `s3`.
-2. `providers.tf`: proveedor AWS con `region`, `profile` y `default_tags`.
-3. `variables.tf`: contrato completo de variables y validaciones de guardrail.
-4. `locals.tf`: tags requeridos + render de `pipeline_definition` con `templatefile`.
-5. `iam.tf`: assume-role policy + policy de permisos runtime + binding al role.
-6. `model_registry.tf`: `aws_sagemaker_model_package_group`.
-7. `sagemaker_pipeline.tf`: `aws_sagemaker_pipeline` con `depends_on` explicito.
-8. `pipeline_definition.json.tpl`: DAG canonico + parametros `CodeBundleUri`, `InputTrainUri`, `InputValidationUri`, `AccuracyThreshold`.
-9. `outputs.tf`: outputs operativos para ejecucion y evidencia.
-10. `terraform.tfvars.example`: valores ejecutables de referencia para fase 03.
-
-#### 3) Mapa de origen de variables (no-guess)
-| Variable | Origen | Ejemplo | Obligatoria |
-|---|---|---|---|
-| `data_bucket_name` | Output de `terraform/00_foundations` (`data_bucket_name`) | `titanic-data-bucket-939122281183-data-science-user` | Si |
-| `code_bundle_uri` | CI/manual upload a S3 con URI inmutable por commit SHA | `s3://<bucket>/pipeline/code/<sha>/pipeline_code.tar.gz` | Si |
-| `pipeline_name` | Default de fase 03 o override por entorno | `titanic-modelbuild-dev` | No (tiene default) |
-| `pipeline_role_name` | Default de fase 03 o naming de entorno | `titanic-sagemaker-pipeline-dev` | No (tiene default) |
-| `model_package_group_name` | Default de fase 03 o convencion de producto | `titanic-survival-xgboost` | No (tiene default) |
-| `processing_image_uri` | URI regional oficial (preprocess) | `141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3` | No (tiene default) |
-| `evaluation_image_uri` | URI regional oficial con dependencias de evaluacion | `141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-xgboost:1.7-1` | No (tiene default) |
-| `training_image_uri` | URI regional oficial para entrenamiento | `141502667606.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-xgboost:1.7-1` | No (tiene default) |
-| `environment`, `project_name`, `owner`, `cost_center` | Gobierno/tags obligatorios del proyecto | `dev`, `titanic-sagemaker`, `data-science-user`, `data-science` | Recomendado fijarlos explicitamente |
-
-#### 4) Orden de dependencia y aplicacion
-1. Inicializar backend y proveedores:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline init
-```
-2. Verificar estilo:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline fmt -check
-```
-3. Verificar sintaxis y schema:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline validate
-```
-4. Plan con variables obligatorias de fase:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline plan \
-  -var='data_bucket_name=<from-foundations>' \
-  -var='code_bundle_uri=s3://<bucket>/pipeline/code/<sha>/pipeline_code.tar.gz'
-```
-5. Aplicar:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline apply \
-  -var='data_bucket_name=<from-foundations>' \
-  -var='code_bundle_uri=s3://<bucket>/pipeline/code/<sha>/pipeline_code.tar.gz'
-```
-6. Extraer outputs para notebook/runtime:
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline output -json
-```
-
-#### 5) Contrato de outputs y consumidor
-| Output | Consumidor siguiente | Uso |
+### Split Terraform vs SDK vs runtime
+| Capa | Gestionado por | Recursos |
 |---|---|---|
-| `pipeline_execution_role_arn` | Notebook (env var `SAGEMAKER_PIPELINE_ROLE_ARN`) | Role de ejecucion de steps |
-| `pipeline_name` | Notebook + CLI (`start/describe/list`) | Arranque y monitoreo de ejecuciones |
-| `model_package_group_name` | Verificacion de registry + gate de promocion | Consulta de versiones y estado de aprobacion |
-| `pipeline_arn` | Evidencia de iteracion/docs operativas | Trazabilidad de infraestructura publicada |
-| `model_package_group_arn` | Evidencia de iteracion/docs operativas | Trazabilidad del dominio de registro |
-
-#### 6) Guardrails de errores reales (Terraform-facing)
-1. Incluir `s3:GetObject` en `arn:aws:s3:::<data_bucket>/pipeline/runtime/*` para evitar fallos entre steps que consumen artefactos runtime.
-2. Incluir `sagemaker:CreateModelPackageGroup` para evitar fallo de `RegisterModel` cuando valida/crea contexto de grupo.
-3. Mantener imagen separada para evaluacion (`evaluation_image_uri`) cuando `evaluate.py` requiere `xgboost`.
-4. En `pipeline_definition.json.tpl`, forzar argumentos de contenedor que requieran string con representacion string-safe (por ejemplo `Std:Join` para `AccuracyThreshold`).
-
-### IAM runtime minimo recomendado
-1. En el role de ejecucion del pipeline incluir, como minimo:
-   - `s3:GetObject` en `arn:aws:s3:::<data_bucket>/curated/*`,
-   - `s3:GetObject` en `arn:aws:s3:::<data_bucket>/pipeline/code/*`,
-   - `s3:GetObject` y `s3:PutObject` en `arn:aws:s3:::<data_bucket>/pipeline/runtime/*`,
-   - `s3:ListBucket` sobre `arn:aws:s3:::<data_bucket>`,
-   - `sagemaker:CreateModelPackageGroup`, `sagemaker:CreateModelPackage`,
-   - `iam:PassRole` restringido a `sagemaker.amazonaws.com`.
+| Infraestructura estable | Terraform | IAM role, policies, Model Package Group |
+| Definicion de pipeline | SDK V3 Python | Pipeline definition, steps, parameters |
+| Recursos runtime | SageMaker (ejecucion) | Processing/training/evaluation jobs, artefactos S3, model package versions |
 
 ## Arquitectura end-to-end (Mermaid)
 ```mermaid
 flowchart TD
   GH[GitHub Commit] --> CI[CI empaqueta pipeline/code]
   CI --> S3C[CodeBundleUri en S3]
-  TF[Terraform fase 03] --> PDef[Definicion SageMaker Pipeline]
+  TF[Terraform fase 03] --> IAM[Pipeline execution role]
   TF --> MPG[Model Package Group]
-  TF --> Role[Pipeline execution role]
+  SDK[SDK V3 Python] --> PDef[Define + Upsert Pipeline]
   S3D[S3 curated/train.csv + validation.csv] --> PExec
   S3C --> PExec[Start Pipeline Execution]
   PDef --> PExec
   PExec --> S1[DataPreProcessing]
   S1 --> S2[TrainModel]
-  S2 --> S3[ModelEvaluation]
-  S3 --> G{accuracy >= AccuracyThreshold}
+  S2 --> S3e[ModelEvaluation]
+  S3e --> G{accuracy >= AccuracyThreshold}
   G -- yes --> S4[RegisterModel\nPendingManualApproval]
   G -- no --> F[No registra modelo]
 ```
 
-## Workshop notebook paso a paso (celdas ejecutables)
-Prerequisito local de codigo antes de correr celdas:
-1. Deben existir en repo:
-   - `pipeline/code/preprocess.py`
-   - `pipeline/code/train.py` (si aplica)
-   - `pipeline/code/evaluate.py`
-2. `preprocess.py` debe escribir salidas en:
-   - `/opt/ml/processing/output/train`
-   - `/opt/ml/processing/output/validation`
-3. `evaluate.py` debe escribir `/opt/ml/processing/evaluation/evaluation.json` con:
-```json
-{
-  "metrics": {
-    "accuracy": 0.81,
-    "precision": 0.80,
-    "recall": 0.79,
-    "f1": 0.79
-  }
-}
+## Terraform de fase 03
+
+Terraform crea la infraestructura estable. La definicion del pipeline se gestiona via SDK.
+
+### Recursos Terraform
+| Recurso | Archivo | Proposito |
+|---|---|---|
+| `aws_iam_role.pipeline_execution` | `iam.tf` | Role de ejecucion para Processing/Training/Pipeline |
+| `aws_iam_role_policy.pipeline_permissions` | `iam.tf` | Least-privilege para S3, SageMaker, ECR, CloudWatch, PassRole |
+| `aws_sagemaker_model_package_group.this` | `model_registry.tf` | Grupo de registro para versiones de modelo |
+
+### Aplicar Terraform
+
+```bash
+terraform -chdir=terraform/03_sagemaker_pipeline init
+terraform -chdir=terraform/03_sagemaker_pipeline fmt -check
+terraform -chdir=terraform/03_sagemaker_pipeline validate
+terraform -chdir=terraform/03_sagemaker_pipeline plan \
+  -var='data_bucket_name=<from-foundations>'
+terraform -chdir=terraform/03_sagemaker_pipeline apply \
+  -var='data_bucket_name=<from-foundations>'
 ```
 
-### Celda 00 - imports y version de SDK
+### Outputs para el SDK
+```bash
+terraform -chdir=terraform/03_sagemaker_pipeline output -json
+```
+
+Outputs clave:
+| Output | Uso |
+|---|---|
+| `pipeline_execution_role_arn` | `SAGEMAKER_PIPELINE_ROLE_ARN` para el SDK |
+| `model_package_group_name` | Nombre del grupo de registro |
+
+## Workshop paso a paso (celdas ejecutables)
+
+### Celda 00 -- Imports V3
+
 ```python
 import os
 import time
@@ -206,31 +149,49 @@ from importlib.metadata import version, PackageNotFoundError
 
 import boto3
 
-from sagemaker.workflow.pipeline_context import PipelineSession
-from sagemaker.workflow.pipeline import Pipeline
-from sagemaker.workflow.parameters import ParameterString, ParameterFloat
-from sagemaker.workflow.steps import ProcessingStep, TrainingStep, CacheConfig
-from sagemaker.workflow.step_collections import RegisterModel
-from sagemaker.workflow.condition_step import ConditionStep
-from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
-from sagemaker.workflow.functions import JsonGet
-from sagemaker.workflow.properties import PropertyFile
+# --- Core (session, image URIs, workflow primitives) ---
+from sagemaker.core.helper.session_helper import Session
+from sagemaker.core import image_uris
+from sagemaker.core.workflow.pipeline_context import PipelineSession
+from sagemaker.core.workflow.parameters import ParameterString, ParameterFloat
+from sagemaker.core.workflow.conditions import ConditionGreaterThanOrEqualTo
+from sagemaker.core.workflow.functions import JsonGet
+from sagemaker.core.workflow.properties import PropertyFile
 
-from sagemaker.processing import ScriptProcessor, ProcessingInput, ProcessingOutput
-from sagemaker.estimator import Estimator
-from sagemaker.inputs import TrainingInput
-from sagemaker.model_metrics import ModelMetrics, MetricsSource
-from sagemaker.image_uris import retrieve
+# --- Processing (from core) ---
+from sagemaker.core.processing import ScriptProcessor
+from sagemaker.core.shapes import (
+    ProcessingInput,
+    ProcessingS3Input,
+    ProcessingOutput,
+    ProcessingS3Output,
+)
 
+# --- Training (V3 ModelTrainer) ---
+from sagemaker.train import ModelTrainer
+from sagemaker.train.configs import InputData, Compute
+
+# --- Serving (V3 ModelBuilder for registration) ---
+from sagemaker.serve.model_builder import ModelBuilder
+
+# --- MLOps (Pipeline, Steps) ---
+from sagemaker.mlops.workflow.pipeline import Pipeline
+from sagemaker.mlops.workflow.steps import ProcessingStep, TrainingStep, CacheConfig
+from sagemaker.mlops.workflow import ConditionStep
+from sagemaker.mlops.workflow.model_step import ModelStep
+
+# --- Version check ---
 try:
     sm_version = version("sagemaker")
 except PackageNotFoundError:
     sm_version = version("sagemaker-core")
 
-assert sm_version.split(".")[0] == "3", sm_version
+assert sm_version.split(".")[0] == "3", f"Se requiere V3, encontrado {sm_version}"
+print(f"sagemaker={sm_version}")
 ```
 
-### Celda 01 - bootstrap de profile/region/session
+### Celda 01 -- Bootstrap de profile/region/session
+
 ```python
 AWS_PROFILE = os.getenv("AWS_PROFILE", "data-science-user")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
@@ -238,16 +199,23 @@ AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
 boto_session = boto3.session.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
 sm_client = boto_session.client("sagemaker")
 s3_client = boto_session.client("s3")
+
+# Session normal para operaciones directas
+session = Session(boto_session=boto_session)
+
+# PipelineSession para definir steps (no ejecuta, solo captura la definicion)
 pipeline_session = PipelineSession(boto_session=boto_session, sagemaker_client=sm_client)
 
-# Debe apuntar al role de ejecucion de SageMaker Pipeline creado por Terraform.
+# Role de ejecucion de SageMaker Pipeline (de Terraform output)
 PIPELINE_EXEC_ROLE_ARN = os.environ["SAGEMAKER_PIPELINE_ROLE_ARN"]
 
-print(AWS_PROFILE, AWS_REGION)
-print(PIPELINE_EXEC_ROLE_ARN)
+print(f"Profile: {AWS_PROFILE}")
+print(f"Region: {AWS_REGION}")
+print(f"Role: {PIPELINE_EXEC_ROLE_ARN}")
 ```
 
-### Celda 02 - variables base y URIs
+### Celda 02 -- Variables base y URIs
+
 ```python
 DATA_BUCKET = os.environ["DATA_BUCKET"]
 GIT_SHA = os.getenv("GIT_SHA", "manual-" + uuid.uuid4().hex[:8])
@@ -259,25 +227,39 @@ CODE_BUNDLE_URI_DEFAULT = f"s3://{DATA_BUCKET}/pipeline/code/{GIT_SHA}/pipeline_
 INPUT_TRAIN_URI_DEFAULT = f"s3://{DATA_BUCKET}/curated/train.csv"
 INPUT_VALIDATION_URI_DEFAULT = f"s3://{DATA_BUCKET}/curated/validation.csv"
 RUNTIME_PREFIX = f"s3://{DATA_BUCKET}/pipeline/runtime/{PIPELINE_NAME}"
+
+print(f"Pipeline: {PIPELINE_NAME}")
+print(f"Data bucket: {DATA_BUCKET}")
+print(f"Code bundle: {CODE_BUNDLE_URI_DEFAULT}")
 ```
 
-### Celda 03 - declaracion del contrato de parametros
+### Celda 03 -- Declaracion de parametros del pipeline
+
 ```python
-param_code_bundle_uri = ParameterString(name="CodeBundleUri", default_value=CODE_BUNDLE_URI_DEFAULT)
-param_input_train_uri = ParameterString(name="InputTrainUri", default_value=INPUT_TRAIN_URI_DEFAULT)
-param_input_validation_uri = ParameterString(name="InputValidationUri", default_value=INPUT_VALIDATION_URI_DEFAULT)
-param_accuracy_threshold = ParameterFloat(name="AccuracyThreshold", default_value=0.78)
+param_code_bundle_uri = ParameterString(
+    name="CodeBundleUri", default_value=CODE_BUNDLE_URI_DEFAULT,
+)
+param_input_train_uri = ParameterString(
+    name="InputTrainUri", default_value=INPUT_TRAIN_URI_DEFAULT,
+)
+param_input_validation_uri = ParameterString(
+    name="InputValidationUri", default_value=INPUT_VALIDATION_URI_DEFAULT,
+)
+param_accuracy_threshold = ParameterFloat(
+    name="AccuracyThreshold", default_value=0.78,
+)
 ```
 
-### Celda 04 - ProcessingStep para DataPreProcessing
+### Celda 04 -- ProcessingStep para DataPreProcessing
+
 ```python
 cache_config = CacheConfig(enable_caching=True, expire_after="30d")
 
-sklearn_image_uri = retrieve(
+sklearn_image_uri = image_uris.retrieve(
     framework="sklearn",
     region=AWS_REGION,
     version="1.2-1",
-    image_scope="training",
+    py_version="py3",
     instance_type="ml.m5.large",
 )
 
@@ -299,8 +281,22 @@ preprocess_step_args = preprocess_processor.run(
         "--code-bundle-uri", param_code_bundle_uri,
     ],
     outputs=[
-        ProcessingOutput(output_name="train", source="/opt/ml/processing/output/train"),
-        ProcessingOutput(output_name="validation", source="/opt/ml/processing/output/validation"),
+        ProcessingOutput(
+            output_name="train",
+            s3_output=ProcessingS3Output(
+                s3_uri=f"{RUNTIME_PREFIX}/preprocess/train",
+                local_path="/opt/ml/processing/output/train",
+                s3_upload_mode="EndOfJob",
+            ),
+        ),
+        ProcessingOutput(
+            output_name="validation",
+            s3_output=ProcessingS3Output(
+                s3_uri=f"{RUNTIME_PREFIX}/preprocess/validation",
+                local_path="/opt/ml/processing/output/validation",
+                s3_upload_mode="EndOfJob",
+            ),
+        ),
     ],
 )
 
@@ -311,61 +307,68 @@ step_preprocess = ProcessingStep(
 )
 ```
 
-### Celda 05 - TrainingStep
+### Celda 05 -- TrainingStep con ModelTrainer (V3)
+
 ```python
-xgb_image_uri = retrieve(
+xgb_image_uri = image_uris.retrieve(
     framework="xgboost",
     region=AWS_REGION,
     version="1.7-1",
-    image_scope="training",
+    py_version="py3",
     instance_type="ml.m5.large",
 )
 
-xgb_estimator = Estimator(
-    image_uri=xgb_image_uri,
+model_trainer = ModelTrainer(
+    training_image=xgb_image_uri,
     role=PIPELINE_EXEC_ROLE_ARN,
-    instance_count=1,
-    instance_type="ml.m5.large",
-    output_path=f"{RUNTIME_PREFIX}/training",
     sagemaker_session=pipeline_session,
-)
-
-xgb_estimator.set_hyperparameters(
-    objective="binary:logistic",
-    num_round=200,
-    max_depth=5,
-    eta=0.2,
-    subsample=0.8,
-    eval_metric="logloss",
-)
-
-training_step_args = xgb_estimator.fit(
-    inputs={
-        "train": TrainingInput(
-            s3_data=step_preprocess.properties.ProcessingOutputConfig.Outputs["train"].S3Output.S3Uri,
+    compute=Compute(
+        instance_type="ml.m5.large",
+        instance_count=1,
+    ),
+    hyperparameters={
+        "objective": "binary:logistic",
+        "num_round": 200,
+        "max_depth": 5,
+        "eta": 0.2,
+        "subsample": 0.8,
+        "eval_metric": "logloss",
+    },
+    input_data_config=[
+        InputData(
+            channel_name="train",
+            data_source=step_preprocess.properties.ProcessingOutputConfig.Outputs[
+                "train"
+            ].S3Output.S3Uri,
             content_type="text/csv",
         ),
-        "validation": TrainingInput(
-            s3_data=step_preprocess.properties.ProcessingOutputConfig.Outputs["validation"].S3Output.S3Uri,
+        InputData(
+            channel_name="validation",
+            data_source=step_preprocess.properties.ProcessingOutputConfig.Outputs[
+                "validation"
+            ].S3Output.S3Uri,
             content_type="text/csv",
         ),
-    }
+    ],
 )
+
+train_step_args = model_trainer.train()
 
 step_train = TrainingStep(
     name="TrainModel",
-    step_args=training_step_args,
+    step_args=train_step_args,
     cache_config=cache_config,
 )
 ```
 
-### Celda 06 - ProcessingStep de evaluacion + extraccion de accuracy
+### Celda 06 -- ProcessingStep de evaluacion + extraccion de accuracy
+
 ```python
-evaluation_image_uri = retrieve(
+evaluation_image_uri = image_uris.retrieve(
     framework="xgboost",
     region=AWS_REGION,
     version="1.7-1",
-    image_scope="training",
+    py_version="py3",
     instance_type="ml.m5.large",
 )
 
@@ -391,16 +394,35 @@ evaluate_step_args = evaluate_processor.run(
     ],
     inputs=[
         ProcessingInput(
-            source=step_train.properties.ModelArtifacts.S3ModelArtifacts,
-            destination="/opt/ml/processing/model",
+            input_name="model",
+            s3_input=ProcessingS3Input(
+                s3_uri=step_train.properties.ModelArtifacts.S3ModelArtifacts,
+                local_path="/opt/ml/processing/model",
+                s3_data_type="S3Prefix",
+                s3_input_mode="File",
+            ),
         ),
         ProcessingInput(
-            source=step_preprocess.properties.ProcessingOutputConfig.Outputs["validation"].S3Output.S3Uri,
-            destination="/opt/ml/processing/validation",
+            input_name="validation",
+            s3_input=ProcessingS3Input(
+                s3_uri=step_preprocess.properties.ProcessingOutputConfig.Outputs[
+                    "validation"
+                ].S3Output.S3Uri,
+                local_path="/opt/ml/processing/validation",
+                s3_data_type="S3Prefix",
+                s3_input_mode="File",
+            ),
         ),
     ],
     outputs=[
-        ProcessingOutput(output_name="evaluation", source="/opt/ml/processing/evaluation"),
+        ProcessingOutput(
+            output_name="evaluation",
+            s3_output=ProcessingS3Output(
+                s3_uri=f"{RUNTIME_PREFIX}/evaluation",
+                local_path="/opt/ml/processing/evaluation",
+                s3_upload_mode="EndOfJob",
+            ),
+        ),
     ],
 )
 
@@ -412,35 +434,29 @@ step_evaluate = ProcessingStep(
 )
 ```
 
-### Celda 07 - ConditionStep + RegisterModel
+### Celda 07 -- ConditionStep + ModelStep (register via ModelBuilder)
+
 ```python
-model_metrics = ModelMetrics(
-    model_statistics=MetricsSource(
-        s3_uri=(
-            step_evaluate.properties
-            .ProcessingOutputConfig
-            .Outputs["evaluation"]
-            .S3Output
-            .S3Uri
-            + "/evaluation.json"
-        ),
-        content_type="application/json",
-    )
+# --- Construir ModelBuilder para registro en pipeline ---
+model_builder = ModelBuilder(
+    s3_model_data_url=step_train.properties.ModelArtifacts.S3ModelArtifacts,
+    image_uri=xgb_image_uri,
+    sagemaker_session=pipeline_session,
+    role_arn=PIPELINE_EXEC_ROLE_ARN,
 )
 
-register_model_step = RegisterModel(
+step_register = ModelStep(
     name="RegisterModel",
-    estimator=xgb_estimator,
-    model_data=step_train.properties.ModelArtifacts.S3ModelArtifacts,
-    content_types=["text/csv"],
-    response_types=["text/csv"],
-    inference_instances=["ml.m5.large"],
-    transform_instances=["ml.m5.large"],
-    model_package_group_name=MODEL_PACKAGE_GROUP_NAME,
-    approval_status="PendingManualApproval",
-    model_metrics=model_metrics,
+    step_args=model_builder.register(
+        model_package_group_name=MODEL_PACKAGE_GROUP_NAME,
+        content_types=["text/csv"],
+        response_types=["text/csv"],
+        inference_instances=["ml.m5.large"],
+        approval_status="PendingManualApproval",
+    ),
 )
 
+# --- Condicion de calidad ---
 accuracy_condition = ConditionGreaterThanOrEqualTo(
     left=JsonGet(
         step_name=step_evaluate.name,
@@ -453,12 +469,13 @@ accuracy_condition = ConditionGreaterThanOrEqualTo(
 step_quality_gate = ConditionStep(
     name="QualityGateAccuracy",
     conditions=[accuracy_condition],
-    if_steps=[register_model_step],
+    if_steps=[step_register],
     else_steps=[],
 )
 ```
 
-### Celda 08 - create/upsert del pipeline
+### Celda 08 -- Crear/actualizar pipeline
+
 ```python
 pipeline = Pipeline(
     name=PIPELINE_NAME,
@@ -472,11 +489,13 @@ pipeline = Pipeline(
     sagemaker_session=pipeline_session,
 )
 
+# Publicar (upsert: crea o actualiza)
 upsert_response = pipeline.upsert(role_arn=PIPELINE_EXEC_ROLE_ARN)
 print(json.dumps(upsert_response, indent=2, default=str))
 ```
 
-### Celda 09 - start de ejecucion
+### Celda 09 -- Iniciar ejecucion
+
 ```python
 execution = pipeline.start(
     parameters={
@@ -488,15 +507,18 @@ execution = pipeline.start(
 )
 
 PIPELINE_EXECUTION_ARN = execution.arn
-print(PIPELINE_EXECUTION_ARN)
+print(f"PipelineExecutionArn: {PIPELINE_EXECUTION_ARN}")
 ```
 
-### Celda 10 - monitoreo de ejecucion y steps
+### Celda 10 -- Monitoreo de ejecucion y steps
+
 ```python
 terminal_statuses = {"Succeeded", "Failed", "Stopped"}
 
 while True:
-    desc = sm_client.describe_pipeline_execution(PipelineExecutionArn=PIPELINE_EXECUTION_ARN)
+    desc = sm_client.describe_pipeline_execution(
+        PipelineExecutionArn=PIPELINE_EXECUTION_ARN,
+    )
     status = desc["PipelineExecutionStatus"]
     print(f"Pipeline status: {status}")
 
@@ -505,7 +527,7 @@ while True:
         SortOrder="Ascending",
     )
     for item in steps_resp.get("PipelineExecutionSteps", []):
-        print(item.get("StepName"), "->", item.get("StepStatus"))
+        print(f"  {item.get('StepName')} -> {item.get('StepStatus')}")
 
     if status in terminal_statuses:
         break
@@ -514,9 +536,10 @@ while True:
 assert status == "Succeeded", f"Pipeline finalizo en {status}"
 ```
 
-### Celda 11 - verificacion final en Model Registry
+### Celda 11 -- Verificacion final en Model Registry
+
 ```python
-# boto3 fallback intencional: inspeccion detallada de packages registrados.
+# boto3 para inspeccion detallada de packages registrados.
 packages = sm_client.list_model_packages(
     ModelPackageGroupName=MODEL_PACKAGE_GROUP_NAME,
     SortBy="CreationTime",
@@ -528,119 +551,117 @@ assert len(packages) > 0, "No hay ModelPackage en el grupo"
 latest_model_package_arn = packages[0]["ModelPackageArn"]
 
 mp_desc = sm_client.describe_model_package(ModelPackageName=latest_model_package_arn)
-print("ModelPackageArn:", latest_model_package_arn)
-print("ModelApprovalStatus:", mp_desc.get("ModelApprovalStatus"))
+print(f"ModelPackageArn: {latest_model_package_arn}")
+print(f"ModelApprovalStatus: {mp_desc.get('ModelApprovalStatus')}")
 ```
 
 ## Comandos CLI de verificacion operativa
-```bash
-terraform -chdir=terraform/03_sagemaker_pipeline fmt -check
-terraform -chdir=terraform/03_sagemaker_pipeline validate
-terraform -chdir=terraform/03_sagemaker_pipeline plan \
-  -var='data_bucket_name=<from-foundations>' \
-  -var='code_bundle_uri=s3://<bucket>/pipeline/code/<sha>/pipeline_code.tar.gz'
-terraform -chdir=terraform/03_sagemaker_pipeline output -json
 
+```bash
 export AWS_PROFILE=data-science-user
 export AWS_REGION=eu-west-1
 
+# Pipeline
 aws sagemaker describe-pipeline \
   --pipeline-name titanic-modelbuild-dev \
-  --profile "$AWS_PROFILE" \
-  --region "$AWS_REGION"
+  --profile "$AWS_PROFILE" --region "$AWS_REGION"
 
+# Ejecuciones
 aws sagemaker list-pipeline-executions \
   --pipeline-name titanic-modelbuild-dev \
-  --profile "$AWS_PROFILE" \
-  --region "$AWS_REGION"
+  --profile "$AWS_PROFILE" --region "$AWS_REGION"
 
+# Steps de una ejecucion
 aws sagemaker list-pipeline-execution-steps \
   --pipeline-execution-arn <pipeline_execution_arn> \
-  --profile "$AWS_PROFILE" \
-  --region "$AWS_REGION"
+  --profile "$AWS_PROFILE" --region "$AWS_REGION"
 
+# Parametros de una ejecucion
 aws sagemaker list-pipeline-parameters-for-execution \
   --pipeline-execution-arn <pipeline_execution_arn> \
-  --profile "$AWS_PROFILE" \
-  --region "$AWS_REGION"
+  --profile "$AWS_PROFILE" --region "$AWS_REGION"
 
+# Model Registry
 aws sagemaker list-model-packages \
   --model-package-group-name titanic-survival-xgboost \
-  --sort-by CreationTime \
-  --sort-order Descending \
-  --profile "$AWS_PROFILE" \
-  --region "$AWS_REGION"
+  --sort-by CreationTime --sort-order Descending \
+  --profile "$AWS_PROFILE" --region "$AWS_REGION"
 ```
 
-## Operacion avanzada en Pipelines (cache + retry + monitoreo)
-### 1) Regla de Step Caching
-1. Habilitar cache en `DataPreProcessing`, `TrainModel`, `ModelEvaluation` cuando:
-   - no cambio el codigo ni la entrada de datos,
-   - se busca acelerar reruns de diagnostico.
-2. Deshabilitar cache cuando:
-   - cambias scripts de `pipeline/code/*`,
-   - cambias parametros que alteran feature engineering o entrenamiento,
-   - necesitas forzar recomputo completo para auditoria.
+## Operacion avanzada (cache + retry + monitoreo)
 
-### 2) Retry guidance con `RetryPipelineExecution`
-1. Si falla por error transitorio (throttling o timeout puntual), usar retry de la misma ejecucion:
+### 1) Regla de Step Caching
+- Habilitar cache en `DataPreProcessing`, `TrainModel`, `ModelEvaluation` cuando
+  no cambio el codigo ni la entrada de datos.
+- Deshabilitar cache cuando cambias scripts de `pipeline/code/*`, cambias parametros
+  que alteran feature engineering/entrenamiento, o necesitas recomputo para auditoria.
+
+### 2) Retry con `RetryPipelineExecution`
+Para errores transitorios (throttling, timeout puntual):
+
 ```bash
 aws sagemaker retry-pipeline-execution \
   --pipeline-execution-arn <failed_pipeline_execution_arn> \
   --pipeline-execution-description "Retry after transient failure" \
-  --profile data-science-user \
-  --region eu-west-1
+  --profile data-science-user --region eu-west-1
 ```
-2. `RetryPipelineExecution` reusa la misma ejecucion y la misma version de pipeline definida al inicio de esa ejecucion.
-3. Si el fallo es deterministico (script, IAM, imagen, path, definicion), aplicar fix y lanzar una nueva ejecucion (`StartPipelineExecution`) para tomar la nueva definicion/version.
+
+Para fallos deterministicos (script, IAM, imagen, path): aplicar fix y lanzar nueva
+ejecucion con `pipeline.start()`.
 
 ### 3) Triage por estado de step
 | StepStatus | Lectura operativa | Accion recomendada |
 |---|---|---|
-| `Executing` | Step aun en curso | revisar logs de CloudWatch y esperar |
-| `Succeeded` | Step completado | continuar al siguiente gate |
-| `Failed` | Fallo de ejecucion | inspeccionar `FailureReason`, aplicar fix o `RetryPipelineExecution` segun causa |
-| `Stopped` | Step detenido manualmente o por stop del pipeline | confirmar motivo operativo y relanzar si corresponde |
+| `Executing` | Step en curso | Revisar logs de CloudWatch y esperar |
+| `Succeeded` | Step completado | Continuar al siguiente |
+| `Failed` | Fallo de ejecucion | Inspeccionar `FailureReason`, fix o retry |
+| `Stopped` | Detenido manualmente | Confirmar motivo y relanzar |
 
-### 4) Runbook rapido de limpieza de prefijos preprocess
-Usar cuando cambie el formato de salida y exista riesgo de archivos legacy en `preprocess/train` o `preprocess/validation`.
+### 4) Limpieza de prefijos preprocess
+Si cambia el formato de salida y hay riesgo de archivos legacy:
 
 ```bash
-aws s3 rm s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/preprocess/train/ --recursive --profile data-science-user --region eu-west-1
-aws s3 rm s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/preprocess/validation/ --recursive --profile data-science-user --region eu-west-1
+aws s3 rm s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/preprocess/train/ \
+  --recursive --profile data-science-user --region eu-west-1
+aws s3 rm s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/preprocess/validation/ \
+  --recursive --profile data-science-user --region eu-west-1
 ```
 
 ## Troubleshooting
 | Sintoma | Causa raiz probable | Accion recomendada |
 |---|---|---|
-| `NoSuchKey` al iniciar por `CodeBundleUri` | URI incorrecta o artefacto no subido | validar `s3://$DATA_BUCKET/pipeline/code/$GIT_SHA/pipeline_code.tar.gz` y relanzar con URI exacta |
-| `AccessDenied` en S3/IAM | policy incompleta en role de pipeline o bucket policy | revisar permisos `s3:GetObject`, `s3:ListBucket`, `s3:PutObject`, `sagemaker:CreateModelPackageGroup` y trust de role `sagemaker.amazonaws.com` |
-| `ConditionStep` no encuentra `metrics.accuracy` | `evaluation.json` con path distinto al esperado | ajustar output de `evaluate.py` para que exista `metrics.accuracy` o corregir `JsonGet` |
-| `TrainModel` falla con `Delimiter ',' is not found in the line` | prefijo `preprocess/validation` contiene archivos heredados no compatibles (por ejemplo `validation_labels.csv`) | limpiar prefijos `preprocess/train` y `preprocess/validation`, luego relanzar con `CodeBundleUri` nuevo para invalidar cache |
-| `ModelEvaluation` falla con `ModuleNotFoundError: No module named 'xgboost'` | imagen de evaluacion no incluye dependencia `xgboost` | usar imagen de evaluacion compatible (`evaluation_image_uri`) y reaplicar pipeline |
-| Ejecucion falla y no recupera con relanzado manual | se requiere retry sobre misma ejecucion o fix en causa deterministica | usar `RetryPipelineExecution` para fallos transitorios; para fallos deterministicos corregir codigo/IAM y ejecutar con nuevo `CodeBundleUri` |
+| `NoSuchKey` al iniciar por `CodeBundleUri` | URI incorrecta o artefacto no subido | Validar `s3://$DATA_BUCKET/pipeline/code/$GIT_SHA/pipeline_code.tar.gz` |
+| `AccessDenied` en S3/IAM | Policy incompleta en role de pipeline | Revisar `s3:GetObject`, `s3:ListBucket`, `s3:PutObject`, `sagemaker:CreateModelPackageGroup` |
+| `ConditionStep` no encuentra `metrics.accuracy` | `evaluation.json` con path distinto | Ajustar output de `evaluate.py` para `metrics.accuracy` |
+| `TrainModel` falla con `Delimiter ',' is not found` | Archivos heredados en preprocess | Limpiar prefijos preprocess y relanzar |
+| `ModelEvaluation` falla con `ModuleNotFoundError: No module named 'xgboost'` | Imagen sin dependencia | Usar imagen XGBoost como `evaluation_image_uri` |
+| `ImportError: cannot import name 'Pipeline' from 'sagemaker.workflow'` | SDK V2 instalado | Instalar `sagemaker>=3.5.0` |
+| `ImportError: cannot import name 'ModelTrainer'` | SDK V2 instalado | Instalar `sagemaker>=3.5.0` |
 
 ## Evidencia requerida
-1. `terraform plan` de fase 03 revisado y explicado.
+1. `terraform plan` de fase 03 revisado.
 2. `CodeBundleUri` usado (con commit SHA) y evidencia de objeto en S3.
 3. `PipelineArn` y `PipelineExecutionArn`.
 4. Estado por step (`DataPreProcessing`, `TrainModel`, `ModelEvaluation`, `QualityGateAccuracy`, `RegisterModel`).
 5. `ModelPackageArn` registrado y `ModelApprovalStatus=PendingManualApproval`.
-6. Referencia a logs de CloudWatch para pasos criticos.
+6. Referencia a logs de CloudWatch.
 
 ## Criterio de cierre
-1. Contrato de parametros aplicado (`CodeBundleUri`, `InputTrainUri`, `InputValidationUri`, `AccuracyThreshold`).
-2. Pipeline ejecuta end-to-end desde `curated/*`.
-3. Gate de calidad se evalua sobre `metrics.accuracy`.
-4. `RegisterModel` se ejecuta solo si cumple umbral.
-5. Evidencia completa registrada en `docs/iterations/ITER-20260220-02.md`.
-6. Se puede reconstruir terraform/03_sagemaker_pipeline solo con esta guia, sin decisiones implicitas.
+1. Pipeline definido con SDK V3 y publicado via `pipeline.upsert()`.
+2. Contrato de parametros aplicado (`CodeBundleUri`, `InputTrainUri`, `InputValidationUri`, `AccuracyThreshold`).
+3. Pipeline ejecuta end-to-end desde `curated/*`.
+4. Gate de calidad se evalua sobre `metrics.accuracy`.
+5. `RegisterModel` se ejecuta solo si cumple umbral.
+6. Evidencia registrada en `docs/iterations/`.
 
 ## Riesgos/pendientes
-1. Si faltan scripts fuente en `pipeline/code/`, la ejecucion no es reproducible.
-2. Si el JSON de evaluacion cambia de forma, el gate puede romperse en `ConditionStep`.
+1. Si faltan scripts en `pipeline/code/`, la ejecucion no es reproducible.
+2. Si el JSON de evaluacion cambia de forma, el gate puede romperse.
 3. Drift entre codigo y ejecucion si no se usa `CodeBundleUri` inmutable por SHA.
-4. Falta de trigger programado en `dev` hasta fase de orquestacion.
+4. Falta de trigger programado hasta fase de orquestacion.
+5. La transicion de `pipeline_definition.json.tpl` (Terraform-managed) a SDK-driven requiere
+   sincronizar la definicion publicada con la version que Terraform conoce.
 
 ## Proximo paso
-Definir serving con endpoint en `docs/tutorials/04-serving-sagemaker.md` y conectar promotion gate con CI/CD en fase 05.
+Definir serving con endpoint en `docs/tutorials/04-serving-sagemaker.md` y conectar
+promotion gate con CI/CD en fase 05.

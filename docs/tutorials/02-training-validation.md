@@ -1,69 +1,77 @@
 # 02 Training and Validation
 
 ## Objetivo y contexto
-Entrenar un modelo binario (`Survived`) en SageMaker y emitir una decision objetiva
-`pass/fail` usando el validation set.
+Entrenar un modelo binario (`Survived`) en SageMaker usando el SDK V3 y emitir una decision
+objetiva `pass/fail` usando el validation set.
 
-Resultado minimo esperado al cerrar esta fase:
-1. Un `TrainingJobArn` exitoso.
-2. Predicciones sobre validation (preferente por Batch Transform; fallback local si no hay quota de transform).
+Esta fase es un ensayo manual de la parte central de `ModelBuild` para validar dataset,
+features, hiperparametros y umbral antes de codificar el pipeline automatizado en fase 03.
+
+## Resultado minimo esperado
+1. Un `TrainingJob` exitoso creado via SageMaker SDK V3 `ModelTrainer`.
+2. Predicciones sobre validation (Batch Transform o inferencia local como fallback).
 3. `metrics.json` con `accuracy`, `precision`, `recall`, `f1`.
 4. `promotion_decision.json` con `pass` o `fail`.
 
-## Fuentes oficiales (SageMaker DG/API) usadas en esta fase
-1. `https://docs.aws.amazon.com/sagemaker/latest/dg/how-it-works-training.html`
-2. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateTrainingJob.html`
-3. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeTrainingJob.html`
-4. `https://docs.aws.amazon.com/sagemaker/latest/dg/xgboost.html`
-5. `https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html`
-6. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateTransformJob.html`
-7. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeTransformJob.html`
-8. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_CreateModel.html`
-9. `https://docs.aws.amazon.com/sagemaker/latest/dg/regions-quotas.html`
-10. `https://docs.aws.amazon.com/servicequotas/latest/userguide/intro.html`
-11. Referencia local de estudio: `docs/aws/sagemaker-dg.pdf`.
+## Fuentes oficiales usadas en esta fase
+1. SageMaker V3 Training: `vendor/sagemaker-python-sdk/docs/training/index.rst`
+2. ModelTrainer API: `vendor/sagemaker-python-sdk/docs/api/sagemaker_train.rst`
+3. Training configs: `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/training/configs.py`
+4. Image URIs: `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/image_uris.py`
+5. V3 training example: `vendor/sagemaker-python-sdk/v3-examples/training-examples/`
+6. `https://docs.aws.amazon.com/sagemaker/latest/dg/xgboost.html`
+7. `https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html`
+8. `https://docs.aws.amazon.com/sagemaker/latest/dg/regions-quotas.html`
 
-## Alineacion con la arquitectura de referencia (imagen)
-Esta fase es un ensayo manual de la parte central de `ModelBuild` para validar
-dataset, features, hiperparametros y umbral antes de codificar el pipeline de la fase 03.
-
-Mapeo directo:
+## Alineacion con la arquitectura de referencia
+Mapeo directo a la arquitectura `ModelBuild`:
 1. Preparar `train_xgb/validation_xgb` -> equivalente funcional de `DataPreProcessing`.
-2. Crear Training Job -> `TrainModel`.
+2. Crear Training Job via `ModelTrainer` -> `TrainModel`.
 3. Batch Transform + calculo de metricas -> equivalente funcional de `ModelEvaluation`.
 4. `promotion_decision.json` -> gate de calidad previo a `RegisterModel`.
 
 Fuera de alcance en esta fase:
 - `RegisterModel` en Model Registry (se ejecuta en fase 03).
-- Despliegue `staging/prod` (se ejecuta en fase 04/05).
+- Despliegue `staging/prod` (se ejecuta en fase 04).
 
 ## Prerequisitos concretos
-1. Fase 00 aplicada en `terraform/00_foundations` (bucket y controles base activos).
-2. Bucket operativo obtenido desde output de fase 00:
-   - `terraform -chdir=terraform/00_foundations output -raw data_bucket_name`
-3. Fase 01 completada (dataset cargado en bucket de fase 00):
-   - `s3://<DATA_BUCKET_FROM_PHASE_00>/curated/train.csv`
-   - `s3://<DATA_BUCKET_FROM_PHASE_00>/curated/validation.csv`
-4. Perfil AWS CLI operativo: `data-science-user`.
-5. Un SageMaker execution role existente con permisos a:
+1. Fase 00 completada (SDK V3 instalado, Terraform foundations aplicado).
+2. Fase 01 completada (datasets en S3):
+   - `s3://<DATA_BUCKET>/curated/train.csv`
+   - `s3://<DATA_BUCKET>/curated/validation.csv`
+3. Perfil AWS CLI operativo: `data-science-user`.
+4. Un SageMaker execution role existente con permisos a:
    - leer/escribir en el bucket del proyecto,
    - ejecutar Training/Model/Transform jobs,
    - escribir logs en CloudWatch.
-6. Ejecutar este tutorial desde la raiz del repositorio para resolver `terraform -chdir=terraform/00_foundations ...`.
+5. Ejecutar este tutorial desde la raiz del repositorio.
 
-## Como se entrena realmente el modelo (sin ambiguedad)
-1. Local solo prepara/evalua:
+## Como se entrena realmente el modelo
+1. **Local solo prepara/evalua**:
    - `scripts/prepare_titanic_xgboost_inputs.py` transforma CSV a features numericas.
    - `scripts/evaluate_titanic_predictions.py` calcula metricas sobre predicciones.
-2. El entrenamiento real ocurre en AWS SageMaker:
-   - Paso 5 crea un `Training Job` en SageMaker (`Built-in XGBoost`).
+2. **El entrenamiento real ocurre en AWS SageMaker**:
+   - Se usa `ModelTrainer` (V3) con imagen built-in XGBoost.
    - El artefacto del modelo queda en S3 (`training/xgboost/output/`).
-3. La evaluacion operacional ocurre con Batch Transform en SageMaker:
-   - Paso 7 ejecuta inferencia batch sobre validation.
-   - Paso 8 baja predicciones para calcular metricas y decidir `pass/fail`.
+3. **La evaluacion usa Batch Transform o inferencia local**:
+   - Opcion A: Batch Transform en SageMaker (preferente).
+   - Opcion B: Inferencia local desde `ModelArtifacts` (workaround si no hay quota).
+
+## V2 -> V3: que cambio en esta fase
+| Concepto | V2 (anterior) | V3 (actual) |
+|---|---|---|
+| Crear training job | AWS Console manual | `ModelTrainer` de `sagemaker.train` |
+| Clase de estimador | `sagemaker.estimator.Estimator` | `sagemaker.train.ModelTrainer` |
+| Tipo de instancia | Parametro directo `instance_type=` | `Compute(instance_type=..., instance_count=...)` |
+| Datos de entrada | `TrainingInput(s3_data=...)` | `InputData(channel_name=..., data_source=...)` |
+| Image URIs | `sagemaker.image_uris.retrieve()` | `sagemaker.core.image_uris.retrieve()` |
+| Session | `sagemaker.Session()` | `sagemaker.core.helper.session_helper.Session()` |
+
+Referencia de migracion: `vendor/sagemaker-python-sdk/migration.md`
 
 ## Paso a paso (ejecucion)
-1. Definir variables del run:
+
+### Paso 1 -- Definir variables del run
 
 ```bash
 export AWS_PROFILE=data-science-user
@@ -79,21 +87,21 @@ export VALIDATION_FEATURES_S3_URI=s3://$DATA_BUCKET/training/xgboost/validation_
 export VALIDATION_LABELS_S3_URI=s3://$DATA_BUCKET/training/xgboost/validation_labels.csv
 ```
 
-2. Verificar que los datos de fase 01 existen en S3:
+### Paso 2 -- Verificar que los datos de fase 01 existen en S3
 
 ```bash
 aws s3 ls "$TRAIN_RAW_S3_URI" --profile "$AWS_PROFILE"
 aws s3 ls "$VALIDATION_RAW_S3_URI" --profile "$AWS_PROFILE"
 ```
 
-3. Preparar features numericas para XGBoost (sin headers):
+### Paso 3 -- Preparar features numericas para XGBoost (sin headers)
 
 ```bash
 python3 scripts/prepare_titanic_xgboost_inputs.py
 wc -l data/titanic/sagemaker/train_xgb.csv data/titanic/sagemaker/validation_xgb.csv
 ```
 
-4. Subir archivos preparados a S3:
+### Paso 4 -- Subir archivos preparados a S3
 
 ```bash
 aws s3 cp data/titanic/sagemaker/train_xgb.csv "$TRAIN_XGB_S3_URI" --profile "$AWS_PROFILE"
@@ -102,34 +110,95 @@ aws s3 cp data/titanic/sagemaker/validation_features_xgb.csv "$VALIDATION_FEATUR
 aws s3 cp data/titanic/sagemaker/validation_labels.csv "$VALIDATION_LABELS_S3_URI" --profile "$AWS_PROFILE"
 ```
 
-5. Crear Training Job en AWS Console (SageMaker):
-   - Ir a `Amazon SageMaker > Training jobs > Create training job`.
-   - Nombre sugerido: `titanic-xgb-train-<yyyymmdd-hhmm>`.
-   - Algoritmo: `Built-in algorithm > XGBoost`.
-   - Input mode: `File`.
-   - Canales de datos:
-     - `train` -> `s3://.../training/xgboost/train_xgb.csv`
-     - `validation` -> `s3://.../training/xgboost/validation_xgb.csv`
-     - Content type: `text/csv`.
-   - Output path: `s3://$DATA_BUCKET/training/xgboost/output/`
-   - Tipo de instancia: `ml.m5.large`, count `1`.
-   - Hyperparameters minimos:
-     - `objective=binary:logistic`
-     - no definir `num_class` para este caso binario
-     - `num_round=200`
-     - `max_depth=5`
-     - `eta=0.2`
-     - `subsample=0.8`
-     - `eval_metric=logloss`
-   - Execution role: usar el rol SageMaker del proyecto con acceso al bucket.
-   - Tags recomendados en el job:
-     - `project=titanic-sagemaker`
-     - `tutorial_phase=02`
+### Paso 5 -- Crear Training Job con ModelTrainer (SageMaker SDK V3)
 
-6. Monitorear estado del training job:
+Este es el paso central que reemplaza la creacion manual via Console.
+
+```python
+import os
+import boto3
+from sagemaker.core.helper.session_helper import Session
+from sagemaker.core import image_uris
+from sagemaker.train import ModelTrainer
+from sagemaker.train.configs import Compute, InputData
+
+# --- Bootstrap de sesion ---
+AWS_PROFILE = os.getenv("AWS_PROFILE", "data-science-user")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+DATA_BUCKET = os.environ["DATA_BUCKET"]
+
+boto_session = boto3.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
+session = Session(boto_session=boto_session)
+
+# Role de ejecucion de SageMaker (creado por Terraform o manualmente)
+SAGEMAKER_EXEC_ROLE_ARN = os.environ["SAGEMAKER_PIPELINE_ROLE_ARN"]
+
+# --- Obtener imagen built-in XGBoost ---
+xgb_image_uri = image_uris.retrieve(
+    framework="xgboost",
+    region=AWS_REGION,
+    version="1.7-1",
+    py_version="py3",
+    instance_type="ml.m5.large",
+)
+print(f"XGBoost image: {xgb_image_uri}")
+
+# --- Crear ModelTrainer ---
+model_trainer = ModelTrainer(
+    training_image=xgb_image_uri,
+    role=SAGEMAKER_EXEC_ROLE_ARN,
+    sagemaker_session=session,
+    base_job_name="titanic-xgb-train",
+    compute=Compute(
+        instance_type="ml.m5.large",
+        instance_count=1,
+        volume_size_in_gb=10,
+    ),
+    hyperparameters={
+        "objective": "binary:logistic",
+        "num_round": 200,
+        "max_depth": 5,
+        "eta": 0.2,
+        "subsample": 0.8,
+        "eval_metric": "logloss",
+    },
+    output_data_config={
+        "s3_output_path": f"s3://{DATA_BUCKET}/training/xgboost/output",
+    },
+    input_data_config=[
+        InputData(
+            channel_name="train",
+            data_source=f"s3://{DATA_BUCKET}/training/xgboost/train_xgb.csv",
+            content_type="text/csv",
+        ),
+        InputData(
+            channel_name="validation",
+            data_source=f"s3://{DATA_BUCKET}/training/xgboost/validation_xgb.csv",
+            content_type="text/csv",
+        ),
+    ],
+)
+
+# --- Lanzar entrenamiento ---
+print("Lanzando training job...")
+model_trainer.train(wait=True, logs=True)
+print("Training completado.")
+
+# --- Obtener nombre del job ---
+training_job = model_trainer._latest_training_job
+print(f"TrainingJobName: {training_job.training_job_name}")
+print(f"TrainingJobArn: {training_job.training_job_arn}")
+```
+
+Referencia V3: `vendor/sagemaker-python-sdk/docs/training/index.rst`
+Ejemplo V3: `vendor/sagemaker-python-sdk/v3-examples/training-examples/`
+
+### Paso 6 -- Monitorear estado del training job (CLI alternativo)
+
+Si prefieres monitorear por CLI en otra terminal:
 
 ```bash
-export TRAINING_JOB_NAME=<nombre-del-job-creado-en-console>
+export TRAINING_JOB_NAME=<nombre-del-job-creado>
 aws sagemaker describe-training-job \
   --training-job-name "$TRAINING_JOB_NAME" \
   --region "$AWS_REGION" \
@@ -137,7 +206,7 @@ aws sagemaker describe-training-job \
   --query 'TrainingJobStatus'
 ```
 
-Si el estado es `Failed`, revisar causa raiz:
+Si el estado es `Failed`:
 
 ```bash
 aws sagemaker describe-training-job \
@@ -147,22 +216,13 @@ aws sagemaker describe-training-job \
   --query 'FailureReason'
 ```
 
-7. Crear modelo y Batch Transform sobre validation:
-   - En el detalle del training job, crear `Model` con nombre sugerido:
-     - `titanic-xgb-model-<yyyymmdd-hhmm>`
-   - Crear `Batch transform job` con:
-     - Nombre sugerido: `titanic-xgb-transform-<yyyymmdd-hhmm>`
-     - Input: `s3://.../training/xgboost/validation_features_xgb.csv`
-     - Output: `s3://$DATA_BUCKET/evaluation/xgboost/predictions/`
-     - Content type: `text/csv`
-     - Split type: `Line`
-     - Instance count: `1`
-     - Instance type: usar un tipo con quota disponible para transform job usage (no asumir `ml.m5.large`)
-     - Tags recomendados:
-       - `project=titanic-sagemaker`
-       - `tutorial_phase=02`
+### Paso 7 -- Obtener predicciones para evaluacion
 
-Antes de crear el transform job, validar quotas disponibles por CLI:
+#### Opcion A (preferente): Batch Transform
+
+Crear modelo y ejecutar Batch Transform. Si no hay quota de transform, ir a Opcion B.
+
+Verificar quotas disponibles primero:
 
 ```bash
 aws service-quotas list-service-quotas \
@@ -173,15 +233,16 @@ aws service-quotas list-service-quotas \
   --output table
 ```
 
-Si recibes `ResourceLimitExceeded`:
-- Verifica quota de la instancia elegida.
-- Cambia a otra instancia con quota > 0.
-- Si todas estan en `0`, solicita increase en Service Quotas y deja evidencia en `docs/iterations/`.
+Si hay quota disponible, crear transform job via Console o CLI:
+- Input: `s3://.../training/xgboost/validation_features_xgb.csv`
+- Output: `s3://$DATA_BUCKET/evaluation/xgboost/predictions/`
+- Content type: `text/csv`
+- Split type: `Line`
+- Instance count: `1`
+- Instance type: usar un tipo con quota > 0
+- Tags: `project=titanic-sagemaker`, `tutorial_phase=02`
 
-8. Obtener predicciones y calcular metricas:
-
-Opcion A (preferente): Batch Transform
-- Descargar predicciones de S3 y evaluar metricas:
+Luego descargar predicciones:
 
 ```bash
 aws s3 cp \
@@ -192,15 +253,11 @@ aws s3 cp \
 
 export PREDICTIONS_FILE=$(find data/titanic/sagemaker/predictions -type f -name "*.out" | head -n 1)
 cp "$PREDICTIONS_FILE" data/titanic/sagemaker/validation_predictions.csv
-
-python3 scripts/evaluate_titanic_predictions.py \
-  --predictions data/titanic/sagemaker/validation_predictions.csv \
-  --labels data/titanic/sagemaker/validation_labels.csv \
-  --threshold 0.5 \
-  --output data/titanic/sagemaker/metrics.json
 ```
 
-Opcion B (workaround): inferencia local desde `ModelArtifacts` cuando no hay quota de transform
+#### Opcion B (workaround): Inferencia local desde ModelArtifacts
+
+Cuando no hay quota de transform job, se pueden generar predicciones localmente.
 
 1) Obtener y descargar artefacto del modelo entrenado:
 
@@ -218,15 +275,11 @@ mkdir -p data/titanic/sagemaker/model/extracted
 tar -xzf data/titanic/sagemaker/model/model.tar.gz -C data/titanic/sagemaker/model/extracted
 ```
 
-2) Generar predicciones localmente con el modelo XGBoost:
-
-```bash
-uv run --with xgboost==2.1.4 python -c "import xgboost; print(xgboost.__version__)"
-```
+2) Generar predicciones localmente con XGBoost:
 
 Nota de compatibilidad:
-- Los artefactos generados por `sagemaker-xgboost:1.3-1` pueden fallar con `xgboost` 3.x al cargar `xgboost-model`.
-- Para este workaround usar `xgboost==2.1.4`.
+- Los artefactos generados por `sagemaker-xgboost:1.3-1` pueden fallar con `xgboost` 3.x.
+- Usar `xgboost==2.1.4` para compatibilidad.
 
 ```bash
 uv run --with xgboost==2.1.4 python - <<'PY'
@@ -268,7 +321,7 @@ print(f"Predicciones generadas: {len(preds)} -> {predictions_path}")
 PY
 ```
 
-3) Calcular metricas con el mismo script de evaluacion:
+### Paso 8 -- Calcular metricas de evaluacion
 
 ```bash
 python3 scripts/evaluate_titanic_predictions.py \
@@ -278,7 +331,7 @@ python3 scripts/evaluate_titanic_predictions.py \
   --output data/titanic/sagemaker/metrics.json
 ```
 
-9. Emitir decision `pass/fail` con umbral de promocion:
+### Paso 9 -- Emitir decision pass/fail con umbral de promocion
 
 ```bash
 python3 - <<'PY'
@@ -302,7 +355,7 @@ print(payload)
 PY
 ```
 
-10. Publicar evidencia de metricas/decision en S3:
+### Paso 10 -- Publicar evidencia de metricas/decision en S3
 
 ```bash
 aws s3 cp data/titanic/sagemaker/metrics.json \
@@ -314,7 +367,7 @@ aws s3 cp data/titanic/sagemaker/promotion_decision.json \
   --profile "$AWS_PROFILE"
 ```
 
-11. (Opcional) Resetear estado para repetir fase 02:
+### Paso 11 -- (Opcional) Resetear estado para repetir fase 02
 
 ```bash
 # Plan de borrado (sin cambios)
@@ -327,27 +380,19 @@ scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESE
 ## Handoff explicito a fase 03
 La fase 02 entrega baseline y criterio de calidad para fase 03, pero no impone como contrato
 de entrada los CSV procesados manualmente.
-1. Regla de calidad a reutilizar en pipeline:
-   - threshold `accuracy >= 0.78`.
-2. Config base de entrenamiento validada:
-   - algoritmo `XGBoost`,
-   - hiperparametros base documentados en este tutorial.
-3. Artefactos de evidencia para trazabilidad:
-   - `evaluation/xgboost/metrics.json`
-   - `evaluation/xgboost/promotion_decision.json`
-4. Nota de separacion arquitectonica:
-   - fase 03 debe iniciar desde `curated/train.csv` y `curated/validation.csv`,
-   - `train_xgb.csv`, `validation_xgb.csv`, `validation_features_xgb.csv`, `validation_labels.csv`
-     pasan a ser artefactos internos del paso `DataPreProcessing` del pipeline.
+1. **Regla de calidad** a reutilizar en pipeline: threshold `accuracy >= 0.78`.
+2. **Config base de entrenamiento** validada: algoritmo XGBoost, hiperparametros documentados.
+3. **Artefactos de evidencia**: `evaluation/xgboost/metrics.json` y `promotion_decision.json`.
+4. **Separacion arquitectonica**: fase 03 inicia desde `curated/train.csv` y `curated/validation.csv`.
+   Los archivos `train_xgb.csv`, `validation_xgb.csv`, etc. pasan a ser artefactos internos
+   del paso `DataPreProcessing` del pipeline.
 
 ## Decisiones tecnicas y alternativas descartadas
-- Se estandariza un baseline reproducible con `XGBoost` de SageMaker sobre features numericas.
-- Fase 02 consume el bucket de salida de fase 00 para evitar drift de nombres entre infraestructura y ejecucion.
-- El umbral de promocion de esta fase queda en `accuracy >= 0.78`.
-- La evaluacion se calcula fuera del training job con Batch Transform + script local para obtener
-  `accuracy`, `precision`, `recall`, `f1`.
-- Si no hay quota de transform job usage, se permite fallback temporal con inferencia local desde `ModelArtifacts`.
-- Alternativas descartadas: promover modelo solo por estado `Completed` sin metricas de calidad.
+- SDK V3 `ModelTrainer` como metodo primario de creacion de training jobs (reemplaza Console manual).
+- El umbral de promocion queda en `accuracy >= 0.78`.
+- La evaluacion se calcula fuera del training job con Batch Transform + script local.
+- Si no hay quota de transform, se permite fallback temporal con inferencia local desde `ModelArtifacts`.
+- Alternativas descartadas: Console-only workflow sin SDK, V2 `Estimator` class, promover modelo solo por estado `Completed`.
 
 ## IAM usado (roles/policies/permisos clave)
 - Operador humano: `data-science-user`.
@@ -356,48 +401,33 @@ de entrada los CSV procesados manualmente.
   - `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` en bucket del proyecto,
   - escritura de logs/metricas en CloudWatch.
 
-## Comandos ejecutados y resultado esperado
-- Regla operativa AWS: ejecutar comandos con perfil `data-science-user`.
-- `python3 scripts/prepare_titanic_xgboost_inputs.py`
-- `aws s3 cp ... train_xgb.csv / validation_xgb.csv / validation_features_xgb.csv / validation_labels.csv`
-- Crear training job y transform job en SageMaker Console (si hay quota de transform).
-- Workaround local (si no hay quota): `uv run --with xgboost==2.1.4 python - <<'PY' ...`
-- `python3 scripts/evaluate_titanic_predictions.py ...`
-- Resultado esperado:
-  - `TrainingJobStatus=Completed`,
-  - `metrics.json` generado con `accuracy`, `precision`, `recall`, `f1`,
-  - `promotion_decision.json` con `pass` o `fail`.
-
 ## Evidencia
 Agregar:
-- `TrainingJobArn`.
-- `TransformJobArn` (si aplica) o evidencia de workaround local (`MODEL_ARTIFACT_S3_URI` + comando de inferencia local).
+- `TrainingJobArn` (del output de `ModelTrainer`).
+- `TransformJobArn` (si aplica) o evidencia de workaround local.
 - `metrics.json` y `promotion_decision.json`.
-- URI S3 del modelo (`ModelArtifacts.S3ModelArtifacts`) y de metricas.
+- URI S3 del modelo (`ModelArtifacts.S3ModelArtifacts`).
 
 ## Criterio de cierre
-- Training job finalizado en estado exitoso.
-- Transform job exitoso o workaround local ejecutado y documentado cuando no haya quota disponible.
+- Training job creado via V3 `ModelTrainer` y finalizado en estado exitoso.
+- Transform job exitoso o workaround local ejecutado y documentado.
 - Metricas de validacion generadas y publicadas en S3.
 - Decision de promocion (`pass`/`fail`) documentada y trazable.
+
+## Troubleshooting rapido
+| Sintoma | Causa raiz probable | Accion recomendada |
+|---|---|---|
+| `XGBoostError ... preds.Size() != labels.Size()` | `objective=reg:logistic` y/o `num_class` definido en problema binario | Corregir a `objective=binary:logistic` y remover `num_class` |
+| `AccessDenied ... s3:GetObject ... train_xgb.csv` | Policy S3 no adjunta al execution role de SageMaker | Verificar que la policy este adjunta al role (no solo como permissions boundary) |
+| `ResourceLimitExceeded ... for transform job usage` | Quota de instancia en 0 | Ajustar a instancia con quota > 0 o solicitar increase |
+| `Failed to load model ... binary format ... removed in 3.1` | Version local de XGBoost incompatible | Usar `uv run --with xgboost==2.1.4` para workaround local |
+| `ImportError: ModelTrainer` | SageMaker SDK V2 instalado en lugar de V3 | Verificar `pip show sagemaker` -> version debe ser 3.x |
 
 ## Riesgos/pendientes
 - Drift entre dataset versionado y dataset usado en entrenamiento real.
 - Falta de control de sesgo o fairness en features seleccionadas.
 - Ajuste de hiperparametros pendiente para mejorar `f1` sin degradar `recall`.
-- Quotas de SageMaker Batch Transform pueden venir en `0` para todas las instancias en cuentas nuevas/restringidas.
-
-## Troubleshooting rapido
-1. `XGBoostError ... preds.Size() != labels.Size() (1426 vs. 713)`:
-   - Causa comun: `objective=reg:logistic` y/o `num_class` definido en problema binario.
-   - Corregir a `objective=binary:logistic` y remover `num_class`.
-2. `AccessDenied ... s3:GetObject ... train_xgb.csv` durante training:
-   - Verificar que la policy S3 este adjunta al execution role de SageMaker (no solo como permissions boundary).
-3. `ResourceLimitExceeded ... for transform job usage`:
-   - Ajustar `Instance count=1`, elegir instancia con quota > 0 o solicitar increase.
-4. `Failed to load model ... binary format ... removed in 3.1` en inferencia local:
-   - Causa: version local de XGBoost no compatible con artefacto legacy del container SageMaker.
-   - Corregir ejecutando workaround con `uv run --with xgboost==2.1.4`.
+- Quotas de Batch Transform pueden estar en `0` para todas las instancias en cuentas nuevas.
 
 ## Proximo paso
 Automatizar flujo con SageMaker Pipeline en `docs/tutorials/03-sagemaker-pipeline.md`.
