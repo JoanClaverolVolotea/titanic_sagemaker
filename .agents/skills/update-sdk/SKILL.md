@@ -32,10 +32,10 @@ scripts/update-sdk.sh
 scripts/update-sdk.sh --branch <branch-name>
 ```
 
-4. If the working tree is intentionally dirty and user accepts risk, run:
+4. If the user wants a custom upstream repo URL, run:
 
 ```bash
-scripts/update-sdk.sh --allow-dirty
+scripts/update-sdk.sh --repo-url <repo-url>
 ```
 
 ## Validation
@@ -53,5 +53,6 @@ Expected:
 
 ## Notes
 
-- The script automates: fetch upstream -> temporary re-track -> subtree pull -> untrack again.
+- The script automates: shallow clone of upstream -> rsync into vendor path -> cleanup temporary files.
 - Default upstream branch is `master` unless overridden.
+- Supported flags are `--branch`, `--repo-url`, and `--help`.
