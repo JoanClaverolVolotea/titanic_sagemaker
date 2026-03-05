@@ -38,3 +38,6 @@ override.tf.json
 
 # Tutorial-generated artifacts (keep raw/splits source CSVs tracked)
 data/titanic/sagemaker/
+
+# Vendored SDK (local-only read reference, not pushed to origin)
+vendor/sagemaker-python-sdk/
