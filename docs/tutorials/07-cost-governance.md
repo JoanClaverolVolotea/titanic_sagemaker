@@ -18,7 +18,7 @@ comandos, Terraform y scripts concretos para implementar cuando se alcance esta 
 ## Fuentes oficiales usadas en esta fase
 1. `https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html`
 2. `https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_Operations_AWS_Budgets.html`
-3. `https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/cost-alloc-tags.html`
+3. `https://docs.aws.amazon.com/cost-management/latest/userguide/cost-alloc-tags.html`
 4. `https://docs.aws.amazon.com/cost-management/latest/userguide/ce-what-is.html`
 5. `https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html`
 

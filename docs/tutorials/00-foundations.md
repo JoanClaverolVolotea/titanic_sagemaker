@@ -25,7 +25,7 @@ Al terminar esta fase tienes todo lo necesario para ejecutar las fases 01-07 sin
 
 ## Prerequisitos concretos
 1. Python 3.9+ instalado (`python3 --version`).
-2. AWS CLI v2 instalado y configurado (`aws --version`).
+2. AWS CLI instalado y configurado (`aws --version`).
 3. Terraform >= 1.5 instalado (`terraform -version`).
 4. Perfil AWS CLI `data-science-user` configurado en `~/.aws/credentials`.
 5. Gestor de paquetes `uv` o `pip` disponible.
@@ -99,7 +99,7 @@ print("Todos los subpaquetes V3 importan correctamente")
 Documentacion de referencia local:
 - `vendor/sagemaker-python-sdk/docs/installation.rst`
 - `vendor/sagemaker-python-sdk/docs/overview.rst`
-- `vendor/sagemaker-python-sdk/migration.md` (guia de migracion V2 -> V3)
+- `vendor/sagemaker-python-sdk/migration.md` (guia de migracion a SDK V3)
 
 ### 3. Definir convenciones globales
 
@@ -176,11 +176,11 @@ Clases V3 involucradas en cada flujo:
 - IaC estandar: Terraform.
 - CI/CD estandar: GitHub Actions.
 - Ambientes: `dev` y `prod`.
-- SDK: SageMaker Python SDK V3 (>= 3.5.0). V2 descartado por deprecacion.
+- SDK: SageMaker Python SDK V3 (>= 3.5.0).
 - Cost tracking obligatorio desde foundations con `default_tags` + tags por recurso.
 - Arquitectura objetivo: ModelBuild CI + ModelDeploy CD.
 - Pipeline definition: SDK-driven (V3 Python). Terraform-managed JSON template como alternativa legacy.
-- Alternativas descartadas: despliegues manuales sin pipeline, V2 Estimator/Predictor patterns.
+- Alternativas descartadas: despliegues manuales sin pipeline, patrones antiguos Estimator/Predictor.
 
 ## IAM usado (roles/policies/permisos clave)
 - Usuario operador DS con permisos minimos para ejecutar pipelines y leer observabilidad.

@@ -119,13 +119,13 @@ print(f"Region: {session.boto_region_name}")
 print(f"Account: {session.account_id()}")
 
 # Verificar acceso al bucket
-s3 = boto_session.client("s3")
+s3_resource = boto_session.resource("s3")
 DATA_BUCKET = "<valor-de-terraform-output>"  # Reemplazar con el valor real
+bucket = s3_resource.Bucket(DATA_BUCKET)
 
 for prefix in ["raw/", "curated/"]:
-    resp = s3.list_objects_v2(Bucket=DATA_BUCKET, Prefix=prefix, MaxKeys=10)
-    for obj in resp.get("Contents", []):
-        print(f"  {obj['Key']} ({obj['Size']} bytes)")
+    for obj in bucket.objects.filter(Prefix=prefix):
+        print(f"  {obj.key} ({obj.size} bytes)")
 ```
 
 Referencia V3: `vendor/sagemaker-python-sdk/docs/sagemaker_core/index.rst`

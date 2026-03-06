@@ -14,8 +14,9 @@ Roadmap oficial de tutoriales del proyecto Titanic SageMaker (alineado a SDK V3)
 ## Principios del roadmap
 1. Cada tutorial es autocontenido: objetivo, prerequisitos, comandos, validacion y evidencia.
 2. Toda guia de SageMaker usa patrones SDK V3 (`sagemaker>=3.5.0`).
-3. Toda operacion AWS se ejecuta con el perfil `data-science-user`.
-4. No se considera una fase cerrada sin evidencia en `docs/iterations/`.
+3. Politica de version: SageMaker SDK V3 es el unico estandar permitido en este roadmap.
+4. Toda operacion AWS se ejecuta con el perfil `data-science-user`.
+5. No se considera una fase cerrada sin evidencia en `docs/iterations/`.
 
 ## Alineacion con documentacion oficial local
 Fuente de verdad para SDK:

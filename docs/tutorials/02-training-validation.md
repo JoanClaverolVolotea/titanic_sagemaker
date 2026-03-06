@@ -57,18 +57,12 @@ Fuera de alcance en esta fase:
    - Opcion A: Batch Transform en SageMaker (preferente).
    - Opcion B: Inferencia local desde `ModelArtifacts` (workaround si no hay quota).
 
-## V2 -> V3: que cambio en esta fase
-| Concepto | V2 (anterior) | V3 (actual) |
-|---|---|---|
-| Crear training job | AWS Console manual | `ModelTrainer` de `sagemaker.train` |
-| Clase de estimador | `sagemaker.estimator.Estimator` | `sagemaker.train.ModelTrainer` |
-| Tipo de instancia | Parametro directo `instance_type=` | `Compute(instance_type=..., instance_count=...)` |
-| Datos de entrada | `TrainingInput(s3_data=...)` | `InputData(channel_name=..., data_source=...)` |
-| Output data | `output_path=` directo | `OutputDataConfig(s3_output_path=...)` |
-| Image URIs | `sagemaker.image_uris.retrieve()` | `sagemaker.core.image_uris.retrieve()` |
-| Session | `sagemaker.Session()` | `sagemaker.core.helper.session_helper.Session()` |
-
-Referencia de migracion: `vendor/sagemaker-python-sdk/migration.md`
+## Estandar SDK en esta fase
+Todo el flujo de entrenamiento usa patrones de SageMaker SDK V3:
+- `sagemaker.train.ModelTrainer` para crear y ejecutar training jobs.
+- `sagemaker.train.configs` (`Compute`, `InputData`, `OutputDataConfig`) para configuracion declarativa.
+- `sagemaker.core.image_uris.retrieve()` para imagenes built-in.
+- `sagemaker.core.helper.session_helper.Session()` para bootstrap de sesion.
 
 ## Paso a paso (ejecucion)
 
@@ -393,7 +387,7 @@ de entrada los CSV procesados manualmente.
 - El umbral de promocion queda en `accuracy >= 0.78`.
 - La evaluacion se calcula fuera del training job con Batch Transform + script local.
 - Si no hay quota de transform, se permite fallback temporal con inferencia local desde `ModelArtifacts`.
-- Alternativas descartadas: Console-only workflow sin SDK, V2 `Estimator` class, promover modelo solo por estado `Completed`.
+- Alternativas descartadas: Console-only workflow sin SDK, promover modelo solo por estado `Completed`.
 
 ## IAM usado (roles/policies/permisos clave)
 - Operador humano: `data-science-user`.
@@ -422,7 +416,7 @@ Agregar:
 | `AccessDenied ... s3:GetObject ... train_xgb.csv` | Policy S3 no adjunta al execution role de SageMaker | Verificar que la policy este adjunta al role (no solo como permissions boundary) |
 | `ResourceLimitExceeded ... for transform job usage` | Quota de instancia en 0 | Ajustar a instancia con quota > 0 o solicitar increase |
 | `Failed to load model ... binary format ... removed in 3.1` | Version local de XGBoost incompatible | Usar `uv run --with xgboost==2.1.4` para workaround local |
-| `ImportError: ModelTrainer` | SageMaker SDK V2 instalado en lugar de V3 | Verificar `pip show sagemaker` -> version debe ser 3.x |
+| `ImportError: ModelTrainer` | Paquete SageMaker incorrecto o instalacion incompleta | Verificar `pip show sagemaker` -> version debe ser 3.x |
 
 ## Riesgos/pendientes
 - Drift entre dataset versionado y dataset usado en entrenamiento real.

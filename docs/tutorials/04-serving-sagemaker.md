@@ -27,18 +27,13 @@ Alcance de cierre:
 6. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_InvokeEndpoint.html`
 7. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry-models.html`
 
-## V2 -> V3: que cambio en esta fase
+## Estandar SDK en esta fase
 
-| Concepto | V2 (anterior) | V3 (actual) |
-|---|---|---|
-| Deploy modelo | `ModelPackage(model_package_arn=...).deploy()` | `ModelBuilder(s3_model_data_url=...).build()` then `.deploy()` |
-| Retorno de deploy | `Predictor` object | `Endpoint` object (`sagemaker.core.resources.Endpoint`) |
-| Invocar | `predictor.predict(data)` | `endpoint.invoke(body=data, content_type="text/csv")` |
-| Serializers | `CSVSerializer()` / `CSVDeserializer()` | No se necesitan; se pasa `content_type` directamente |
-| Session | `sagemaker.session.Session()` | `sagemaker.core.helper.session_helper.Session()` |
-| Cleanup | `predictor.delete_endpoint()` | `endpoint.delete()` + `EndpointConfig.get(...).delete()` |
-
-Referencia: `vendor/sagemaker-python-sdk/migration.md`
+Serving y promocion se ejecutan con patrones de SageMaker SDK V3:
+- `sagemaker.serve.ModelBuilder` para construir y desplegar modelos.
+- `sagemaker.core.resources.Endpoint` para invocacion y operaciones de recurso.
+- `sagemaker.core.helper.session_helper.Session()` para bootstrap de sesion.
+- `boto3` como fallback operativo para update de endpoint existente cuando aplica.
 
 ## Prerequisitos concretos
 1. Fases 00-03 completadas.
@@ -412,7 +407,7 @@ aws sagemaker delete-endpoint \
 | Endpoint en `Failed` | Contenedor/artifact incompatible o IAM insuficiente | Revisar `FailureReason` en `DescribeEndpoint` |
 | `InvokeEndpoint` devuelve 4xx/5xx | Payload invalido o modelo no listo | Validar `ContentType`, formato CSV y estado `InService` |
 | Regresion funcional en `prod` | Modelo nuevo no cumple comportamiento | Rollback con `UpdateEndpoint` al config previo |
-| `ImportError: ModelBuilder` | SDK V2 instalado | Instalar `sagemaker>=3.5.0` |
+| `ImportError: ModelBuilder` | Paquete SageMaker incorrecto o instalacion incompleta | Instalar `sagemaker>=3.5.0` |
 
 ## Evidencia requerida
 1. `ModelPackageArn` usado + `ModelApprovalStatus=Approved`.

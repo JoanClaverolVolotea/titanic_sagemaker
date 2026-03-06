@@ -25,31 +25,13 @@ estable (IAM, Model Package Group). La ejecucion del pipeline crea recursos runt
 7. ModelBuilder: `vendor/sagemaker-python-sdk/docs/inference/index.rst`
 8. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html`
 
-## V2 -> V3: que cambio en esta fase
+## Estandar SDK en esta fase
 
-Este tutorial tiene los cambios mas significativos de V2 a V3. Tabla de referencia completa:
-
-| Concepto | V2 (anterior) | V3 (actual) |
-|---|---|---|
-| Pipeline | `from sagemaker.workflow.pipeline import Pipeline` | `from sagemaker.mlops.workflow.pipeline import Pipeline` |
-| TrainingStep | `from sagemaker.workflow.steps import TrainingStep` | `from sagemaker.mlops.workflow.steps import TrainingStep` |
-| ProcessingStep | `from sagemaker.workflow.steps import ProcessingStep` | `from sagemaker.mlops.workflow.steps import ProcessingStep` |
-| CacheConfig | `from sagemaker.workflow.steps import CacheConfig` | `from sagemaker.mlops.workflow.steps import CacheConfig` |
-| ConditionStep | `from sagemaker.workflow.condition_step import ConditionStep` | `from sagemaker.mlops.workflow import ConditionStep` |
-| RegisterModel | `from sagemaker.workflow.step_collections import RegisterModel` | `from sagemaker.mlops.workflow.model_step import ModelStep` + `ModelBuilder.register()` |
-| Parameters | `from sagemaker.workflow.parameters import ParameterString` | `from sagemaker.core.workflow.parameters import ParameterString` |
-| Conditions | `from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo` | `from sagemaker.core.workflow.conditions import ConditionGreaterThanOrEqualTo` |
-| JsonGet | `from sagemaker.workflow.functions import JsonGet` | `from sagemaker.core.workflow.functions import JsonGet` |
-| PropertyFile | `from sagemaker.workflow.properties import PropertyFile` | `from sagemaker.core.workflow.properties import PropertyFile` |
-| PipelineSession | `from sagemaker.workflow.pipeline_context import PipelineSession` | `from sagemaker.core.workflow.pipeline_context import PipelineSession` |
-| ScriptProcessor | `from sagemaker.processing import ScriptProcessor` | `from sagemaker.core.processing import ScriptProcessor` |
-| ProcessingInput | `from sagemaker.processing import ProcessingInput` | `from sagemaker.core.shapes import ProcessingInput, ProcessingS3Input` |
-| ProcessingOutput | `from sagemaker.processing import ProcessingOutput` | `from sagemaker.core.shapes import ProcessingOutput, ProcessingS3Output` |
-| Estimator | `from sagemaker.estimator import Estimator` | `from sagemaker.train import ModelTrainer` |
-| TrainingInput | `from sagemaker.inputs import TrainingInput` | `from sagemaker.train.configs import InputData, Compute` |
-| Image URIs | `from sagemaker.image_uris import retrieve` | `from sagemaker.core import image_uris` |
-
-Referencia de migracion: `vendor/sagemaker-python-sdk/migration.md`
+Todo el pipeline se define y opera con SageMaker SDK V3:
+- `sagemaker.mlops.workflow` para `Pipeline`, `ProcessingStep`, `TrainingStep`, `ConditionStep`, `ModelStep`.
+- `sagemaker.core.workflow` para parametros, condiciones, funciones JSON y contexto de pipeline.
+- `sagemaker.train.ModelTrainer` para el step de entrenamiento.
+- `sagemaker.serve.ModelBuilder` para el registro en Model Registry.
 
 ## Prerequisitos concretos
 1. Fase 00 completada (SDK V3 instalado, Terraform foundations aplicado).
@@ -635,8 +617,8 @@ aws s3 rm s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/preprocess/validatio
 | `ConditionStep` no encuentra `metrics.accuracy` | `evaluation.json` con path distinto | Ajustar output de `evaluate.py` para `metrics.accuracy` |
 | `TrainModel` falla con `Delimiter ',' is not found` | Archivos heredados en preprocess | Limpiar prefijos preprocess y relanzar |
 | `ModelEvaluation` falla con `ModuleNotFoundError: No module named 'xgboost'` | Imagen sin dependencia | Usar imagen XGBoost como `evaluation_image_uri` |
-| `ImportError: cannot import name 'Pipeline' from 'sagemaker.workflow'` | SDK V2 instalado | Instalar `sagemaker>=3.5.0` |
-| `ImportError: cannot import name 'ModelTrainer'` | SDK V2 instalado | Instalar `sagemaker>=3.5.0` |
+| `ImportError: cannot import name 'Pipeline' from 'sagemaker.workflow'` | Imports fuera del namespace V3 o instalacion inconsistente | Usar imports V3 de este tutorial e instalar `sagemaker>=3.5.0` |
+| `ImportError: cannot import name 'ModelTrainer'` | Paquete SageMaker incorrecto o instalacion incompleta | Verificar instalacion y version `sagemaker>=3.5.0` |
 
 ## Evidencia requerida
 1. `terraform plan` de fase 03 revisado.
