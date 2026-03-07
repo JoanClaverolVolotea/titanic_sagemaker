@@ -12,7 +12,7 @@ Permitir que el proyecto pueda:
 - ejecutar las fases 00-07 con la identidad humana `data-science-user`
 - mantener `iam:PassRole` restringido a los roles reales del proyecto
 - operar `training`, `pipeline`, `registry` y `serving` sin permisos admin
-- documentar el rol OIDC de GitHub Actions sin depender de access keys estaticas
+- documentar y bootstrapear el rol OIDC de GitHub Actions sin depender de access keys estaticas
 
 ## Archivos incluidos
 
@@ -23,7 +23,7 @@ Permitir que el proyecto pueda:
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: lectura/escritura sobre el bucket real del tutorial y sus prefijos `raw/`, `curated/`, `training/`, `evaluation/` y `pipeline/`.
 - `05-ds-policy-administration.json`: bootstrap IAM para que `data-science-user` pueda crear/versionar/adjuntar las managed policies del propio tutorial.
-- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos de bootstrap/configuracion del bucket de fase 00 creado por Terraform.
+- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos de bootstrap/configuracion del bucket de fase 00 convergido por script.
 - `07-ds-sagemaker-training-job-lifecycle.json`: stop/delete de training jobs del proyecto.
 - `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para validaciones operativas.
 - `09-ds-sagemaker-authoring-runtime.json`: acciones mutantes necesarias para fases 02-04 (`CreateTrainingJob`, `CreateProcessingJob`, `Create/UpdatePipeline`, `StartPipelineExecution`, `CreateModel`, `CreateEndpoint*`, `UpdateModelPackage`, `InvokeEndpoint`).
@@ -54,8 +54,9 @@ El repo usa hoy:
 - AWS Account ID: `939122281183`
 - Region operativa: `eu-west-1`
 - Bucket de tutorial: `titanic-data-bucket-939122281183-data-science-user`
-- Role de pipeline esperado por Terraform: `titanic-sagemaker-pipeline-dev`
-- Model Package Group esperado por Terraform: `titanic-survival-xgboost`
+- Role de pipeline esperado por el manifest: `titanic-sagemaker-pipeline-dev`
+- Model Package Group esperado por el manifest: `titanic-survival-xgboost`
+- Execution role esperado por el manifest: `titanic-sagemaker-sagemaker-execution-dev`
 
 Si ejecutas estos documentos en otra cuenta o region:
 
@@ -181,7 +182,9 @@ output = json
 
 ## GitHub Actions role (fase 05)
 
-Estos dos archivos no se adjuntan al usuario `data-science-user`. Son insumos para un rol dedicado del runner, idealmente creado en la futura etapa `terraform/05_cicd`.
+Estos dos archivos no se adjuntan al usuario `data-science-user`. Son insumos para un rol
+dedicado del runner, que puede convergerse con `scripts/ensure_github_actions_role.py` si el
+proveedor OIDC ya existe en IAM.
 
 Sugerencia de rol:
 
@@ -215,7 +218,9 @@ El script:
 
 ## Notas de seguridad
 
-- `06-ds-s3-tutorial-bucket-bootstrap.json` usa `s3:Get*` solo sobre el ARN del bucket de tutorial porque Terraform puede leer configuraciones `GetBucket...` adicionales durante `refresh/import`.
+- `06-ds-s3-tutorial-bucket-bootstrap.json` usa `s3:Get*` sobre el ARN del bucket porque el
+  bootstrap script necesita validar configuraciones `GetBucket...` antes de converger.
 - `09-ds-sagemaker-authoring-runtime.json` y `12-gha-sagemaker-deployer-policy.json` usan `Resource: "*"` en parte de las acciones de create/start/update porque SageMaker no soporta de forma consistente restricciones por ARN en todos esos APIs; el alcance se reduce por region y por `iam:PassRole` separado.
-- `03-ds-passrole-restricted.json` ahora incluye el patron real `titanic-sagemaker-pipeline-*` usado por Terraform.
+- `03-ds-passrole-restricted.json` incluye los patrones reales `titanic-sagemaker-pipeline-*`
+  y `titanic-sagemaker-sagemaker-execution-*` usados por el manifest y los scripts.
 - El flujo recomendado sigue siendo separar identidad humana, role runtime de SageMaker y role OIDC de GitHub Actions.

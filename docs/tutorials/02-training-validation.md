@@ -32,7 +32,8 @@ pipeline V3.
 1. Fases 00 y 01 completadas.
 2. Debe existir un execution role resoluble por uno de estos caminos:
    - runtime administrado con `get_execution_role()`, o
-   - variable de entorno `SAGEMAKER_EXECUTION_ROLE_ARN` exportada manualmente.
+   - variable de entorno `SAGEMAKER_EXECUTION_ROLE_ARN` exportada manualmente o desde
+     `scripts/resolve_project_env.py`.
 3. Perfil AWS CLI `data-science-user` operativo.
 4. Ejecutar desde la raiz del repositorio.
 
@@ -47,9 +48,7 @@ pipeline V3.
 ### 1. Definir variables del run
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
 
 export TRAIN_RAW_S3_URI=s3://$DATA_BUCKET/curated/train.csv
 export VALIDATION_RAW_S3_URI=s3://$DATA_BUCKET/curated/validation.csv
@@ -64,8 +63,8 @@ Si no estas dentro de un runtime administrado por SageMaker, deja el role listo 
 ejecutar los snippets Python:
 
 ```bash
-if [ -z "${SAGEMAKER_EXECUTION_ROLE_ARN:-}" ] && [ -d terraform/03_sagemaker_pipeline ]; then
-  export SAGEMAKER_EXECUTION_ROLE_ARN=$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw pipeline_execution_role_arn 2>/dev/null || true)
+if [ -z "${SAGEMAKER_EXECUTION_ROLE_ARN:-}" ]; then
+  export SAGEMAKER_EXECUTION_ROLE_ARN=$(python3 scripts/resolve_project_env.py --key SAGEMAKER_EXECUTION_ROLE_ARN)
 fi
 
 echo "SAGEMAKER_EXECUTION_ROLE_ARN=${SAGEMAKER_EXECUTION_ROLE_ARN:-<pendiente>}"

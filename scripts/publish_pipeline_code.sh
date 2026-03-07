@@ -91,9 +91,9 @@ parse_args() {
 
 resolve_defaults() {
   if [[ -z "${BUCKET}" ]]; then
-    BUCKET="$(terraform -chdir="${REPO_ROOT}/terraform/00_foundations" output -raw data_bucket_name 2>/dev/null || true)"
+    BUCKET="$(python3 "${REPO_ROOT}/scripts/resolve_project_env.py" --key DATA_BUCKET 2>/dev/null || true)"
   fi
-  [[ -n "${BUCKET}" ]] || fatal "Bucket is required. Pass --bucket or configure terraform/00_foundations output."
+  [[ -n "${BUCKET}" ]] || fatal "Bucket is required. Pass --bucket or configure config/project-manifest.json."
 
   if [[ -z "${CODE_VERSION}" ]]; then
     CODE_VERSION="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || true)"

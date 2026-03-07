@@ -43,9 +43,7 @@ Este bloque deja el tutorial listo para ejecutarse sin depender de variables exp
 otra fase:
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-export MODEL_PACKAGE_GROUP_NAME=$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw model_package_group_name)
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
 export MODEL_PACKAGE_ARN=$(python3 - <<'PY'
 import boto3
 import os
@@ -64,7 +62,6 @@ resp = sm_client.list_model_packages(
 print(resp["ModelPackageSummaryList"][0]["ModelPackageArn"])
 PY
 )
-export SAGEMAKER_EXECUTION_ROLE_ARN=${SAGEMAKER_EXECUTION_ROLE_ARN:-$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw pipeline_execution_role_arn)}
 export STAGING_ENDPOINT_NAME=${STAGING_ENDPOINT_NAME:-titanic-survival-staging}
 export PROD_ENDPOINT_NAME=${PROD_ENDPOINT_NAME:-titanic-survival-prod}
 

@@ -27,7 +27,8 @@ repositorio y los scripts locales de preparacion.
 
 ## Prerequisitos concretos
 1. Fase 00 completada.
-2. `terraform/00_foundations` aplicado o al menos con `data_bucket_name` conocido.
+2. `config/project-manifest.json` presente y `scripts/ensure_project_bootstrap.py --check`
+   exitoso.
 3. Perfil AWS CLI `data-science-user` operativo.
 4. Ejecutar este tutorial desde la raiz del repositorio.
 
@@ -36,9 +37,8 @@ repositorio y los scripts locales de preparacion.
 ### 1. Resolver el bucket operativo
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
+python3 scripts/ensure_project_bootstrap.py --check
 echo "DATA_BUCKET=$DATA_BUCKET"
 ```
 
@@ -124,8 +124,8 @@ Rutas canonicas del roadmap:
 ## IAM usado (roles/policies/permisos clave)
 - Identidad base: `data-science-user`.
 - Policy minima para esta fase: `DataSciences3DataAccess`.
-- Si el mismo operador tambien crea o reconfigura el bucket con Terraform en fase 00, añade
-  `DataScienceS3TutorialBucketBootstrap`.
+- Si el mismo operador tambien crea o reconfigura el bucket con
+  `scripts/ensure_project_bootstrap.py`, añade `DataScienceS3TutorialBucketBootstrap`.
 
 ## Evidencia
 Agregar:

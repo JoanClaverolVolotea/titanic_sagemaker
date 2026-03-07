@@ -36,7 +36,7 @@ tratan como autoridad para inventar APIs distintas a las documentadas en el SDK 
 1. `00-foundations.md`: setup V3, `Session()` y convenciones del repo.
 2. `01-data-ingestion.md`: carga del dataset local del repo a S3.
 3. `02-training-validation.md`: baseline manual con `ModelTrainer` + `evaluation.json`.
-4. `03-sagemaker-pipeline.md`: pipeline durable con mapping V3, codigo en S3 del proyecto y publicacion via Terraform.
+4. `03-sagemaker-pipeline.md`: pipeline durable con mapping V3, codigo en S3 del proyecto y publicacion via SDK upsert.
 5. `04-serving-sagemaker.md`: deploy desde `ModelPackageArn` con `ModelBuilder`.
 6. `05-cicd-github-actions.md`: contrato SageMaker del workflow, sin sintaxis externa al SDK.
 7. `06-observability-operations.md`: runbook operativo centrado en recursos de SageMaker.
@@ -47,7 +47,7 @@ tratan como autoridad para inventar APIs distintas a las documentadas en el SDK 
 flowchart TD
   F0[00 Foundations\nSession + V3 imports] --> D1[01 Data Ingestion\nraw + curated en S3]
   D1 --> T2[02 Training + Validation\nModelTrainer + evaluation.json]
-  T2 --> P3[03 Pipeline\nS3 Code + Terraform Publish]
+  T2 --> P3[03 Pipeline\nS3 Code + SDK Upsert]
   P3 --> S4[04 Serving\nModelPackage -> ModelBuilder -> invoke]
   S4 --> C5[05 CI/CD Contract]
   S4 --> O6[06 Observability]
@@ -58,8 +58,12 @@ flowchart TD
 - `scripts/prepare_titanic_splits.py`
 - `scripts/prepare_titanic_xgboost_inputs.py`
 - `scripts/check_tutorial_resources_active.sh`
+- `scripts/ensure_project_bootstrap.py`
+- `scripts/ensure_github_actions_role.py`
 - `scripts/reset_tutorial_state.sh`
+- `scripts/resolve_project_env.py`
 - `scripts/publish_pipeline_code.sh`
+- `scripts/upsert_pipeline.py`
 - `pipeline/code/preprocess.py`
 - `pipeline/code/evaluate.py`
 

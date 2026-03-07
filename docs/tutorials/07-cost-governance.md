@@ -31,12 +31,7 @@ SageMaker: training jobs, processing jobs, model registry y endpoints.
 Variables minimas para ejecutar esta fase desde cero:
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-export DATA_BUCKET=$(terraform -chdir=terraform/00_foundations output -raw data_bucket_name)
-export PIPELINE_NAME=${PIPELINE_NAME:-titanic-modelbuild-dev}
-export STAGING_ENDPOINT_NAME=${STAGING_ENDPOINT_NAME:-titanic-survival-staging}
-export PROD_ENDPOINT_NAME=${PROD_ENDPOINT_NAME:-titanic-survival-prod}
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
 ```
 
 ## Contrato minimo de costo

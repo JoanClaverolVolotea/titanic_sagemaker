@@ -33,12 +33,7 @@ de los recursos de SageMaker que el proyecto ya crea.
 Este bloque reconstruye todas las variables del runbook sin depender de otra sesion:
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-export PIPELINE_NAME=${PIPELINE_NAME:-titanic-modelbuild-dev}
-export MODEL_PACKAGE_GROUP_NAME=${MODEL_PACKAGE_GROUP_NAME:-$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw model_package_group_name)}
-export STAGING_ENDPOINT_NAME=${STAGING_ENDPOINT_NAME:-titanic-survival-staging}
-export PROD_ENDPOINT_NAME=${PROD_ENDPOINT_NAME:-titanic-survival-prod}
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
 ```
 
 ## Operador minimo: sesion y clientes

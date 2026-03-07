@@ -5,16 +5,16 @@ Alinear el proyecto con el SageMaker Python SDK V3 vendoreado localmente. Esta f
 el entorno Python, la sesion base de SageMaker, los imports canonicos de V3 y las
 convenciones del repositorio.
 
-Esta fase no define servicios AWS fuera del alcance del SDK vendoreado y no provisiona por
-si sola un SageMaker execution role para training o hosting.
+Esta fase valida el entorno Python, el manifest versionado del proyecto y el bootstrap
+minimo de recursos duraderos que las fases 01-05 necesitan para operar sin Terraform.
 
 ## Resultado minimo esperado
 1. `sagemaker` 3.x instalado en el entorno activo.
 2. Imports base de V3 verificados: `Session`, `ModelTrainer`, `ModelBuilder`, `Pipeline`.
 3. Perfil operativo `data-science-user` exportado para los ejemplos locales.
-4. `terraform/00_foundations` validado localmente.
-5. Queda explicito que las fases 02-04 necesitan un SageMaker execution role preexistente o
-   uno obtenido desde un runtime administrado con `get_execution_role()`.
+4. `scripts/ensure_project_bootstrap.py` validado localmente en modo `--check`.
+5. Queda explicito como resolver o converger `SAGEMAKER_EXECUTION_ROLE_ARN` para las
+   fases 02-04.
 
 ## Fuentes locales alineadas con SDK V3
 1. `vendor/sagemaker-python-sdk/docs/index.rst`
@@ -29,7 +29,7 @@ si sola un SageMaker execution role para training o hosting.
 ## Prerequisitos concretos
 1. Python 3.9+ instalado.
 2. Perfil AWS CLI `data-science-user` configurado para el proyecto.
-3. Terraform disponible si vas a validar IaC local.
+3. `boto3` disponible para ejecutar los scripts de bootstrap.
 4. Ejecutar este tutorial desde la raiz del repositorio.
 
 ## Estructura relevante del repositorio
@@ -38,8 +38,8 @@ titanic_sagemaker/
   data/titanic/           # Dataset Titanic local del proyecto
   docs/tutorials/         # Roadmap V3
   pipeline/code/          # Scripts usados por Processing/Evaluation
+  config/                 # Manifest versionado del proyecto
   scripts/                # Scripts operativos locales
-  terraform/              # IaC del proyecto
   vendor/                 # Documentacion vendoreada del SDK
 ```
 
@@ -48,8 +48,7 @@ titanic_sagemaker/
 ### 1. Exportar el contexto operativo del proyecto
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
+eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
 ```
 
 ### 2. Instalar SageMaker SDK V3 como paquete principal
@@ -110,12 +109,12 @@ Regla para este roadmap:
 - Si ejecutas dentro de un runtime administrado, `get_execution_role()` es el patron V3
   preferido segun `quickstart.rst`.
 
-### 5. Validar foundations de Terraform
+### 5. Validar foundations sin Terraform
 
 ```bash
-terraform -chdir=terraform/00_foundations fmt -check
-terraform -chdir=terraform/00_foundations validate
-terraform -chdir=terraform/00_foundations plan
+python3 scripts/ensure_project_bootstrap.py --check
+# Si necesitas converger bucket, roles y registry:
+# python3 scripts/ensure_project_bootstrap.py --apply
 ```
 
 ### 6. Fijar el mapa V3 del proyecto
@@ -149,20 +148,21 @@ Reglas que se consideran fuera del estandar V3 de este roadmap:
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo del proyecto: `data-science-user`.
-- Si este mismo operador va a aplicar `terraform/00_foundations`, debe tener
-  `DataScienceS3TutorialBucketBootstrap`.
+- Si este mismo operador va a ejecutar `scripts/ensure_project_bootstrap.py --apply`, debe
+  tener `DataScienceS3TutorialBucketBootstrap`.
 - Para trabajar con los prefijos de datos/artefactos del bucket del proyecto, usa
   `DataSciences3DataAccess`.
 - Las fases 02-04 requieren un `SAGEMAKER_EXECUTION_ROLE_ARN` valido.
-- Este archivo no asume que Terraform foundations cree ese role; solo documenta la necesidad.
+- Este archivo ya no depende de Terraform; el bucket y los roles pueden convergerse con
+  `scripts/ensure_project_bootstrap.py`.
 - `session.default_bucket()` es informativo y puede resolver el bucket por defecto de
-  SageMaker, que es distinto del bucket gobernado por `terraform/00_foundations`.
+  SageMaker, que es distinto del bucket gobernado por `config/project-manifest.json`.
 
 ## Evidencia
 Agregar:
 - Version instalada de `sagemaker`.
 - Salida del snippet de imports y `Session()`.
-- Salida de `terraform plan` de foundations.
+- Salida de `scripts/ensure_project_bootstrap.py --check`.
 - Valor resuelto para `SAGEMAKER_EXECUTION_ROLE_ARN` o nota de que se resolvera en runtime
   administrado.
 
@@ -170,12 +170,13 @@ Agregar:
 - `sagemaker` 3.x instalado y verificado.
 - `Session()` funcional con el perfil operativo del proyecto.
 - Imports V3 canonicos verificados.
-- `terraform/00_foundations` validado localmente.
+- `scripts/ensure_project_bootstrap.py` validado localmente.
 - Queda claro como se resolvera el execution role para las fases runtime.
 
 ## Riesgos/pendientes
 - Si no existe `SAGEMAKER_EXECUTION_ROLE_ARN`, las fases 02-04 no son ejecutables localmente.
-- El stack `00_foundations` no es la fuente de verdad para recursos runtime de SageMaker.
+- El manifest no es la fuente de verdad para recursos runtime de SageMaker; esos recursos
+  siguen siendo artefactos del SDK.
 - Cualquier uso de APIs V2 debe tratarse como desviacion del roadmap.
 
 ## Proximo paso
