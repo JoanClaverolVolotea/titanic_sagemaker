@@ -8,13 +8,17 @@ La meta no es solo desplegar infraestructura o modelos. La meta es construir un 
 
 Construir un proyecto completo de Data Science/MLOps con:
 
-- Infraestructura 100% en Terraform
-- CI/CD desde GitHub (GitHub Actions) obligatorio
-- Entrenamiento y validacion en SageMaker
-- Registro y promocion de modelos antes del update de endpoint
-- Orquestacion de procesos con Step Functions/Lambda/EventBridge Scheduler
-- Observabilidad con CloudWatch
-- Control de costos y gobierno desde el inicio
+- Infraestructura durable gobernada por `config/project-manifest.json` y scripts idempotentes versionados, sin depender de `terraform plan/apply/output` para ejecutar las fases 00-07.
+- Artefactos de runtime gestionados via SageMaker SDK V3: processing jobs, training jobs, pipeline executions, model packages y endpoints.
+- Operador IAM humano `data-science-user` para operaciones manuales e interactivas del tutorial.
+- CI/CD desde GitHub (GitHub Actions) obligatorio, usando un rol OIDC dedicado para el runner.
+- Entrenamiento y validacion en SageMaker.
+- Registro y promocion de modelos antes del update de endpoint.
+- Orquestacion ML build via SageMaker Pipelines. Step Functions/Lambda/EventBridge Scheduler reservados para deploy y tareas auxiliares.
+- Observabilidad con CloudWatch.
+- Control de costos y gobierno desde el inicio.
+- Metodologia SDK V3 notebook-first para fases de desarrollo y exploracion.
+- Ruta canonica de ejecucion para el equipo DS: `docs/tutorials/` + `docs/aws/policies/`.
 
 ## Objetivos de Aprendizaje
 
@@ -31,14 +35,14 @@ Al finalizar, el ingeniero debe poder:
 Servicios esperados y su rol minimo:
 
 - `S3`: datasets, artefactos, paquetes de pipeline, outputs.
-- `ECR`: imagenes de entrenamiento/inferencia.
-- `ECS/Fargate`: tareas auxiliares de ETL o integracion de servicio cuando aplique.
-- `SageMaker`: processing, training, model registry, pipeline, endpoint.
-- `Step Functions`: orquestacion de flujo E2E.
-- `Lambda`: tareas de glue/logica corta, validaciones, triggers.
-- `EventBridge` + `Scheduler`: ejecucion programada y disparadores.
+- `ECR`: imagenes de entrenamiento/inferencia (custom containers cuando aplique).
+- `SageMaker`: processing, training, model registry, pipeline (orquestacion ML build), endpoint.
+- `Step Functions`: orquestacion de deploy y flujos auxiliares (no usado para ML build, que usa SageMaker Pipelines).
+- `Lambda`: tareas de glue/logica corta, validaciones, triggers, cost governance.
+- `EventBridge` + `Scheduler`: ejecucion programada, disparadores, apagado de recursos no-prod.
 - `CloudWatch`: logs, metricas, alarmas, dashboards.
 - `EC2`: solo si existe necesidad explicita (evitar por defecto).
+- `ECS/Fargate`: opcional, solo si se necesita ETL o integracion de servicio que no cubra SageMaker Processing. No se usa actualmente.
 - `Cost Management`: presupuestos, alarmas y etiquetado obligatorio.
 
 ## Contrato de Colaboracion con Agentes
@@ -60,21 +64,25 @@ Si hay error o incidente, el agente debe reportar:
 
 ## Regla Global para Agentes LLM (AWS Identity)
 
-Toda operacion AWS ejecutada por agentes LLM en este proyecto debe usar:
+Toda operacion AWS manual o interactiva ejecutada por agentes LLM en este proyecto debe usar:
 - Identidad base: `data-science-user`
 - Perfil operativo unico: `data-science-user`
+
+Excepcion permitida:
+- GitHub Actions debe usar un rol OIDC dedicado del proyecto; no debe reutilizar access keys de `data-science-user`.
 
 Prohibido:
 - Usar root account para operaciones del proyecto.
 - Usar otros usuarios IAM humanos distintos de `data-science-user`.
+- Usar access keys estaticas de usuarios humanos dentro de CI/CD.
 
 ## Roles de Mentoria
 
-### 1. Arquitecto de Infraestructura (Terraform/AWS)
+### 1. Arquitecto de Plataforma (AWS / Bootstrap Operativo)
 
-- Mision: traducir arquitectura AWS a HCL modular y mantenible.
-- Foco: state backend, providers, modulos, outputs, dependencias.
-- Regla: no aplicar sin `terraform plan` revisado y documentado.
+- Mision: traducir la arquitectura AWS a un manifest versionado, scripts idempotentes y contratos claros de entorno.
+- Foco: `config/project-manifest.json`, `scripts/resolve_project_env.py`, `scripts/ensure_project_bootstrap.py`, `scripts/ensure_github_actions_role.py`, naming, tags y outputs operativos.
+- Regla: no ejecutar `--apply` sin validacion previa en modo `--check`, diff entendido y evidencia en `docs/`.
 
 ### 2. Especialista en MLOps (SageMaker/CI-CD)
 
@@ -85,7 +93,7 @@ Prohibido:
 ### 3. Debugger Educativo
 
 - Mision: resolver incidentes explicando la causa raiz.
-- Foco: CloudWatch logs, estados de Step Functions, errores IAM.
+- Foco: CloudWatch logs, estados de SageMaker Pipelines/Step Functions, errores IAM.
 - Regla: cada fix deja aprendizaje operativo en docs.
 
 ### 4. Guardian de Seguridad y Costos
@@ -104,7 +112,7 @@ Archivos base esperados:
 - `docs/tutorials/01-data-ingestion.md`
 - `docs/tutorials/02-training-validation.md`
 - `docs/tutorials/03-sagemaker-pipeline.md`
-- `docs/tutorials/04-serving-ecs-sagemaker.md`
+- `docs/tutorials/04-serving-sagemaker.md`
 - `docs/tutorials/05-cicd-github-actions.md`
 - `docs/tutorials/06-observability-operations.md`
 - `docs/tutorials/07-cost-governance.md`
@@ -120,37 +128,47 @@ Contenido minimo por archivo:
 6. Riesgos/pendientes.
 7. Proximo paso.
 
-## Estandares Terraform
+## Estandares de Infraestructura Operativa
 
-Los recursos y modulos Terraform tambien deben seguir una secuencia numerada por etapas (`1_`, `2_`, `3_`, ...), alineada con el avance del proyecto.
+El camino operativo del proyecto ya no depende de Terraform. La fuente de verdad para nombres,
+tags y recursos duraderos es:
 
-Ejemplo de estructura recomendada:
+- `config/project-manifest.json`
+- `scripts/resolve_project_env.py`
+- `scripts/ensure_project_bootstrap.py`
+- `scripts/ensure_github_actions_role.py`
+- `scripts/publish_pipeline_code.sh`
+- `scripts/upsert_pipeline.py`
 
-- `terraform/1_foundation`
-- `terraform/2_networking`
-- `terraform/3_data`
-- `terraform/4_ml_training`
-- `terraform/5_serving`
-- `terraform/6_orchestration`
-- `terraform/7_observability_cost`
+Contrato actual del proyecto:
 
-Regla: no saltar etapas. Cada etapa debe tener `plan` aprobado, evidencia en `docs/` y outputs claros para la siguiente.
+- `config/project-manifest.json` define cuenta, region, bucket, roles, pipeline, endpoints y tags.
+- `scripts/resolve_project_env.py` emite el entorno compartido por local y CI.
+- `scripts/ensure_project_bootstrap.py` converge bucket, SageMaker execution role, pipeline role y Model Package Group.
+- `scripts/ensure_github_actions_role.py` converge el rol OIDC del runner si el provider ya existe.
+- `scripts/publish_pipeline_code.sh` publica `pipeline/code/` y scripts auxiliares en S3.
+- `scripts/upsert_pipeline.py` construye y publica la definicion del pipeline con SageMaker SDK V3.
 
-Antes de `terraform apply`, el agente debe validar:
+Regla: `docs/tutorials/00-07` deben seguir siendo ejecutables sin `terraform plan/apply/output`.
 
-1. Convenciones de nombre y tags obligatorios.
-2. `terraform fmt`
-3. `terraform validate`
-4. `terraform plan` con diff explicado
-5. Reglas IAM least-privilege
-6. Impacto en costo estimado
+Antes de ejecutar cualquier `--apply`, el agente debe validar:
+
+1. Convenciones de nombre y tags del `project-manifest`.
+2. Modo `--check` del script correspondiente.
+3. Reglas IAM least-privilege.
+4. Impacto en costo estimado.
+5. Evidencia y decision registradas en `docs/`.
+
+Terraform puede seguir existiendo en `terraform/` como referencia historica o trabajo futuro,
+pero no debe reintroducirse como dependencia operativa del roadmap actual sin actualizar
+primero `docs/tutorials/` y `docs/aws/policies/`.
 
 Tags obligatorios en todos los recursos soportados:
 
 - `project = "titanic-sagemaker"`
 - `env = "<dev|prod>"`
 - `owner = "<team-or-user>"`
-- `managed_by = "terraform"`
+- `managed_by = "scripts"`
 - `cost_center = "<value>"`
 
 ## Estandares CI/CD (GitHub Actions)
@@ -166,14 +184,16 @@ Flujo minimo:
 
 1. Pull Request:
    - lint/test/build (codigo)
-   - terraform fmt/validate/plan
-   - security checks (IaC y dependencias)
+   - validar `config/project-manifest.json` y scripts operativos en modo `--check`
+   - security checks (dependencias, IAM y supply chain)
 2. Merge a main:
-   - apply en `dev`
+   - asumir rol OIDC dedicado del runner
+   - asegurar recursos duraderos requeridos por el tutorial
+   - publicar codigo del pipeline, hacer `upsert` y ejecutar el flujo en `dev`
    - smoke tests de pipeline/modelo/endpoint
 3. Promocion a `prod`:
    - aprobacion manual + evidencia de `dev`
-   - apply en `prod`
+   - aprobar `ModelPackageArn` y desplegar `prod`
 
 Reglas de modelo:
 
@@ -181,6 +201,13 @@ Reglas de modelo:
 2. Registrar modelo.
 3. Evaluar criterio de promocion.
 4. Actualizar endpoint solo si pasa umbral.
+
+Seguridad CI/CD:
+
+- GitHub Actions pinned por SHA (no por tag) para mitigar supply-chain attacks.
+- Secretos solo via GitHub Secrets o OIDC; nunca static keys en workflows.
+- Considerar herramientas como `gitleaks`, `checkov`, o `trivy` en el flujo PR.
+- El workflow no debe depender de `terraform plan/apply/output`.
 
 ## Modelo IAM para Usuario de Data Science
 
@@ -205,18 +232,19 @@ Principio: separar identidad humana de roles de ejecucion.
 
 Reglas obligatorias:
 1. Nunca commitear `AccessKeyId` o `SecretAccessKey` reales.
-2. Operar todas las acciones AWS con el perfil `data-science-user`.
+2. Operar todas las acciones AWS manuales/locales con el perfil `data-science-user`.
 3. Mantener maximo 2 access keys por usuario y documentar la rotacion en `docs/iterations/`.
-4. Toda operacion AWS (CLI, SDK, Terraform, scripts) debe originarse en `data-science-user` como identidad principal.
+4. Los workflows de GitHub Actions deben usar un rol OIDC dedicado; no deben emularse con las keys del usuario DS.
 
 ### Roles de workload (servicios)
 
 Definir roles separados para:
 
 - SageMaker execution role
-- ECS task execution/task role
-- Lambda role
-- Step Functions role
+- SageMaker Pipeline execution role (si difiere del execution role base)
+- GitHub Actions OIDC deployer role
+- Lambda role (cuando se implemente cost governance)
+- Step Functions role (cuando se implemente orquestacion de deploy)
 - EventBridge/Scheduler invocations
 
 Controles obligatorios:
@@ -226,11 +254,22 @@ Controles obligatorios:
 3. Secretos via servicios dedicados (no hardcode).
 4. Politicas separadas por modulo y entorno.
 
+### Politica de teardown
+
+El operador `data-science-user` necesita permisos adicionales para limpiar recursos no-prod y
+recursos duraderos creados por los scripts del tutorial:
+- `sagemaker:DeleteModelPackage`, `sagemaker:DeleteModelPackageGroup`
+- `s3:DeleteBucketPolicy`, `s3:ListBucketVersions`, `s3:DeleteObject` (versioned)
+- `iam:ListInstanceProfilesForRole`, `iam:DeleteRolePolicy`, `iam:DeleteRole`
+
+Estos permisos deben otorgarse en una politica separada (`ds-teardown-policy.json`) y pueden
+restringirse a entornos no-prod.
+
 ## Observabilidad y Operacion
 
 Obligatorio configurar:
 
-1. CloudWatch Logs para training, pipelines, lambdas y tareas ECS.
+1. CloudWatch Logs para training, pipelines y lambdas.
 2. Metricas de exito/fallo y tiempos por etapa.
 3. Alarmas para errores de entrenamiento, fallos de endpoint y costos.
 4. Runbook breve por incidente recurrente.
