@@ -1,124 +1,143 @@
 # IAM policies for tutorial operators
 
-Este directorio contiene politicas IAM listas para crear y asignar al usuario que va a ejecutar los tutoriales en `docs/tutorials/`.
+Este directorio contiene dos tipos de artefactos IAM para ejecutar `docs/tutorials/`:
+
+- politicas administradas para el usuario operador `data-science-user`
+- documentos de confianza/permisos para el rol de GitHub Actions de la fase 05
 
 ## Objetivo
-Permitir que el usuario operador de Data Science pueda:
-- Ver estado de recursos, logs, metricas y costos.
-- Operar recursos de ambientes `dev` y `prod` con un perfil AWS unico.
-- Ejecutar operaciones que requieren `iam:PassRole` sin usar comodines globales.
 
-## Politicas incluidas
-- `01-ds-observability-readonly.json`: lectura operativa (SageMaker, Step Functions, CloudWatch, ECS, Lambda, S3, costos).
-- `02-ds-assume-environment-roles.json`: `sts:AssumeRole` a roles de entorno.
+Permitir que el proyecto pueda:
+
+- ejecutar las fases 00-07 con la identidad humana `data-science-user`
+- mantener `iam:PassRole` restringido a los roles reales del proyecto
+- operar `training`, `pipeline`, `registry` y `serving` sin permisos admin
+- documentar el rol OIDC de GitHub Actions sin depender de access keys estaticas
+
+## Archivos incluidos
+
+### Politicas administradas del usuario `data-science-user`
+
+- `01-ds-observability-readonly.json`: lectura operativa de SageMaker, CloudWatch, logs, tags y recursos auxiliares usados por los runbooks.
+- `02-ds-assume-environment-roles.json`: `sts:AssumeRole` a roles de entorno documentados.
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
-- `04-ds-s3-data-access.json`: acceso de lectura/escritura acotado a buckets de datos/artefactos del proyecto.
-- `05-ds-policy-administration.json`: permisos IAM bootstrap para que `data-science-user` pueda ejecutar el script de ensure (gestionar versions/attachments de policies).
-- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos para bootstrap y gestion de configuracion del bucket de tutorial creado en fase 00 (`titanic-data-bucket-939122281183-data-science-user`) por Terraform.
-- `07-ds-sagemaker-training-job-lifecycle.json`: permisos acotados para listar/describir/parar/eliminar training jobs del proyecto (`titanic-*`) en `eu-west-1`.
-- `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para listar cuotas disponibles (incluyendo SageMaker transform usage) en `eu-west-1`.
+- `04-ds-s3-data-access.json`: lectura/escritura sobre el bucket real del tutorial y sus prefijos `raw/`, `curated/`, `training/`, `evaluation/` y `pipeline/`.
+- `05-ds-policy-administration.json`: bootstrap IAM para que `data-science-user` pueda crear/versionar/adjuntar las managed policies del propio tutorial.
+- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos de bootstrap/configuracion del bucket de fase 00 creado por Terraform.
+- `07-ds-sagemaker-training-job-lifecycle.json`: stop/delete de training jobs del proyecto.
+- `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para validaciones operativas.
+- `09-ds-sagemaker-authoring-runtime.json`: acciones mutantes necesarias para fases 02-04 (`CreateTrainingJob`, `CreateProcessingJob`, `Create/UpdatePipeline`, `StartPipelineExecution`, `CreateModel`, `CreateEndpoint*`, `UpdateModelPackage`, `InvokeEndpoint`).
+- `10-ds-sagemaker-cleanup-nonprod.json`: cleanup no-productivo de endpoints, endpoint configs, models, pipelines y Model Registry.
 
-## Alineacion con fase 00 (Terraform foundations)
-El stack `terraform/00_foundations` crea/gestiona el bucket de tutorial:
-- `titanic-data-bucket-939122281183-data-science-user`
+### Documentos de rol para GitHub Actions
 
-Para que Terraform pueda crear/importar y gestionar ese bucket en fase 00, la policy `06-ds-s3-tutorial-bucket-bootstrap.json` debe cubrir:
-- `s3:CreateBucket`
-- lectura de configuracion del bucket (acciones `s3:Get*` acotadas al ARN del bucket)
-- escritura de configuracion requerida por Terraform (`PutBucketPolicy`, `PutBucketVersioning`, `PutEncryptionConfiguration`, etc.)
+- `11-gha-oidc-trust-policy.json`: trust policy para asumir el rol del workflow via OIDC de GitHub Actions.
+- `12-gha-sagemaker-deployer-policy.json`: permisos del runner para ejecutar el contrato de `docs/tutorials/05-cicd-github-actions.md`.
 
-Justificacion de seguridad para wildcard en `Action`:
-- `s3:Get*` se usa solo para bootstrap/import de Terraform del bucket en fase 00.
-- El alcance se limita al recurso `arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user`.
-- Evita fallos operativos por nuevas lecturas `GetBucket...` que el provider AWS ejecuta durante `refresh/import`.
+## Mapa fase -> politicas requeridas
 
-## Cuenta y region
-Esta version ya usa:
+| Fase | Politicas minimas |
+| --- | --- |
+| `00-foundations` | `04`, `06` |
+| `01-data-ingestion` | `04` |
+| `02-training-validation` | `01`, `03`, `04`, `07`, `09` |
+| `03-sagemaker-pipeline` | `01`, `03`, `04`, `09` |
+| `04-serving-sagemaker` | `01`, `03`, `04`, `09` |
+| `05-cicd-github-actions` | `11`, `12` para el runner; el humano solo necesita `01` para revisar evidencia |
+| `06-observability-operations` | `01`; si rehaces el smoke test, tambien `09` por `InvokeEndpoint` |
+| `07-cost-governance` | `01`, `04`, `07`, `08`, `10` |
+
+## Alineacion con la infraestructura actual
+
+El repo usa hoy:
+
 - AWS Account ID: `939122281183`
 - Region operativa: `eu-west-1`
+- Bucket de tutorial: `titanic-data-bucket-939122281183-data-science-user`
+- Role de pipeline esperado por Terraform: `titanic-sagemaker-pipeline-dev`
+- Model Package Group esperado por Terraform: `titanic-survival-xgboost`
 
 Si ejecutas estos documentos en otra cuenta o region:
-- Reemplaza el Account ID en los ARN.
-- Ajusta la condicion `aws:RequestedRegion` en `01-ds-observability-readonly.json`.
-- Si cambiaste nombres de roles o buckets, ajusta los ARN para tu naming real.
+
+- reemplaza el `Account ID` en los ARN
+- ajusta la condicion `aws:RequestedRegion`
+- ajusta nombres de bucket, pipeline role y Model Package Group a tu naming real
 
 ## Credenciales estandar del operador DS
+
 Definicion oficial para este proyecto:
+
 - IAM User: `data-science-user`
 - Access key logica activa: `data-science-user-primary`
 - Access key logica de rotacion: `data-science-user-rotation`
-- Perfil AWS CLI oficial (unico): `data-science-user`
+- Perfil AWS CLI oficial: `data-science-user`
 
-Nota: AWS genera el `AccessKeyId` real automaticamente (formato `AKIA...`).  
-Los nombres `data-science-user-primary` y `data-science-user-rotation` son etiquetas operativas para documentacion y almacenamiento seguro.
+Nota: AWS genera el `AccessKeyId` real automaticamente (`AKIA...`).
+Los nombres `primary` y `rotation` son etiquetas operativas para documentacion y vault.
 
-## Aplicar politicas correctas por AWS Console (browser)
-Usa este flujo en la consola web para crear/actualizar las politicas y asignarlas al usuario `data-science-user`.
+## Aplicar politicas del usuario por AWS Console
 
 ### 1) Confirmar cuenta y usuario
+
 1. Inicia sesion en AWS Console con la cuenta `939122281183`.
-2. Abre `IAM` y ve a `Users`.
-3. Verifica que existe el usuario `data-science-user`.
+2. Abre `IAM -> Users`.
+3. Verifica que existe `data-science-user`.
 
 ### 2) Crear y registrar las access keys del usuario
-1. Ve a `IAM > Users > data-science-user > Security credentials`.
-2. En `Access keys`, crea la primera key para uso CLI:
-   - Use case: `Command Line Interface (CLI)`.
-   - Guarda `Access key ID` y `Secret access key` en tu vault con etiqueta `data-science-user-primary`.
-3. Crea una segunda key para rotacion controlada:
-   - Misma ruta, `Create access key`.
-   - Guarda valores en tu vault con etiqueta `data-science-user-rotation`.
-4. Mantener maximo 2 keys:
-   - `primary` activa para operacion diaria.
-   - `rotation` activa solo durante ventana de rotacion o cuando reemplaces la primaria.
+
+1. Ve a `IAM -> Users -> data-science-user -> Security credentials`.
+2. Crea una key para uso CLI y guardala en tu vault como `data-science-user-primary`.
+3. Crea una segunda key para rotacion controlada y guardala como `data-science-user-rotation`.
+4. Mantener maximo 2 keys activas.
 5. Nunca guardar secretos en el repositorio.
 
-### 3) Crear o actualizar las politicas administradas
-Politicas esperadas y archivo fuente:
+### 3) Crear o actualizar las managed policies del usuario
 
 | Policy name | JSON source |
 | --- | --- |
-| `DataScienceAssumeEnvironmentRoles` | `docs/aws/policies/02-ds-assume-environment-roles.json` |
 | `DataScienceObservabilityReadOnly` | `docs/aws/policies/01-ds-observability-readonly.json` |
+| `DataScienceAssumeEnvironmentRoles` | `docs/aws/policies/02-ds-assume-environment-roles.json` |
 | `DataSciencePassroleRestricted` | `docs/aws/policies/03-ds-passrole-restricted.json` |
 | `DataSciences3DataAccess` | `docs/aws/policies/04-ds-s3-data-access.json` |
 | `DataSciencePolicyAdministration` | `docs/aws/policies/05-ds-policy-administration.json` |
 | `DataScienceS3TutorialBucketBootstrap` | `docs/aws/policies/06-ds-s3-tutorial-bucket-bootstrap.json` |
 | `DataScienceSageMakerTrainingJobLifecycle` | `docs/aws/policies/07-ds-sagemaker-training-job-lifecycle.json` |
 | `DataScienceServiceQuotasReadOnly` | `docs/aws/policies/08-ds-service-quotas-readonly.json` |
+| `DataScienceSageMakerAuthoringRuntime` | `docs/aws/policies/09-ds-sagemaker-authoring-runtime.json` |
+| `DataScienceSageMakerCleanupNonProd` | `docs/aws/policies/10-ds-sagemaker-cleanup-nonprod.json` |
 
-Para cada politica:
-1. Ve a `IAM > Policies`.
+Para cada policy:
+
+1. Ve a `IAM -> Policies`.
 2. Si no existe:
-   - `Create policy` -> pestaña `JSON`.
-   - Pega el contenido del archivo JSON correspondiente.
-   - `Next` -> Name: usa exactamente el `Policy name` de la tabla.
-   - `Create policy`.
+   - `Create policy` -> pestaña `JSON`
+   - pega el archivo JSON
+   - `Next` -> usa exactamente el nombre de la tabla
 3. Si ya existe:
-   - Abre la policy -> pestaña `Policy versions`.
-   - `Create policy version` -> pega el JSON actualizado -> marca `Set as default`.
-   - Si te aparece limite de 5 versiones, elimina primero una version antigua no-default y repite.
-
-Nota: IAM es un servicio global, pero esta documentacion asume operacion en `eu-west-1` por la condicion `aws:RequestedRegion` incluida en observabilidad.
+   - abre la policy -> `Policy versions`
+   - `Create policy version`
+   - pega el JSON actualizado y marca `Set as default`
+   - si llegaste al limite de 5 versiones, elimina antes una no-default
 
 ### 4) Adjuntar politicas al usuario `data-science-user`
-1. Ve a `IAM > Users > data-science-user`.
-2. `Add permissions`.
-3. Selecciona `Attach policies directly`.
-4. Busca y marca estas politicas base:
-   - `DataScienceAssumeEnvironmentRoles`
-   - `DataScienceObservabilityReadOnly`
-   - `DataSciencePassroleRestricted`
-   - `DataSciences3DataAccess`
-   - `DataScienceS3TutorialBucketBootstrap` (requerida para crear/subir al bucket `titanic-data-bucket-939122281183-data-science-user`)
-   - `DataScienceSageMakerTrainingJobLifecycle` (requerida para `sagemaker:DeleteTrainingJob` via CLI/Console)
-   - `DataScienceServiceQuotasReadOnly` (requerida para consultar quotas de SageMaker por CLI)
-5. Si vas a usar `scripts/ensure_ds_policies.sh`, marca tambien:
-   - `DataSciencePolicyAdministration`
-6. `Next` -> `Add permissions`.
 
-### 5) Configurar perfil AWS CLI unico con `aws configure`
-Usa la key `data-science-user-primary` en el perfil `data-science-user`.
+Adjunta como base del operador del tutorial:
+
+- `DataScienceObservabilityReadOnly`
+- `DataSciencePassroleRestricted`
+- `DataSciences3DataAccess`
+- `DataScienceS3TutorialBucketBootstrap`
+- `DataScienceSageMakerTrainingJobLifecycle`
+- `DataScienceSageMakerAuthoringRuntime`
+- `DataScienceSageMakerCleanupNonProd`
+- `DataScienceServiceQuotasReadOnly`
+
+Adjunta segun necesidad adicional:
+
+- `DataScienceAssumeEnvironmentRoles`: si el operador humano debe asumir roles de entorno documentados.
+- `DataSciencePolicyAdministration`: si vas a usar `scripts/ensure_ds_policies.sh`.
+
+### 5) Configurar el perfil AWS CLI unico
 
 ```bash
 aws configure --profile data-science-user
@@ -126,7 +145,7 @@ aws configure set region eu-west-1 --profile data-science-user
 aws configure set output json --profile data-science-user
 ```
 
-Resultado esperado en archivos AWS:
+Resultado esperado:
 
 ```ini
 # ~/.aws/credentials
@@ -142,46 +161,61 @@ region = eu-west-1
 output = json
 ```
 
-### 6) Validar en la consola y por CLI
-1. En `IAM > Users > data-science-user > Permissions`, confirma que estan adjuntas las 7 politicas operativas (incluyendo `DataScienceS3TutorialBucketBootstrap`, `DataScienceSageMakerTrainingJobLifecycle` y `DataScienceServiceQuotasReadOnly`).
-2. Si usas el script de ensure, confirma tambien `DataSciencePolicyAdministration`.
-3. Abre `IAM Policy Simulator`.
-4. Selecciona el usuario `data-science-user`.
-5. Simula al menos estas acciones:
-   - `sts:AssumeRole`
+### 6) Validar por consola y CLI
+
+1. En `IAM -> Users -> data-science-user -> Permissions`, confirma que estan adjuntas las 8 policies operativas del tutorial, y `DataSciencePolicyAdministration` si vas a usar el script de ensure.
+2. Abre `IAM Policy Simulator`.
+3. Simula al menos estas acciones:
    - `iam:PassRole`
-   - `cloudwatch:GetMetricData`
    - `s3:PutObject`
-   - `s3:GetBucketPolicy`
-   - `s3:GetBucketTagging`
-   - `s3:GetAccelerateConfiguration`
-6. Configura el contexto de simulacion con region `eu-west-1` para validar reglas con `aws:RequestedRegion`.
-7. Prueba perfil local:
+   - `sagemaker:CreateTrainingJob`
+   - `sagemaker:StartPipelineExecution`
+   - `sagemaker:UpdateModelPackage`
+   - `sagemaker:DeleteEndpoint`
+4. Usa contexto de simulacion con region `eu-west-1`.
+5. Prueba perfil local:
    - `aws sts get-caller-identity --profile data-science-user`
    - `aws configure list --profile data-science-user`
-8. Prueba lectura de quotas SageMaker por CLI:
-   - `aws service-quotas list-service-quotas --service-code sagemaker --query "Quotas[?contains(QuotaName, 'for transform job usage')].[QuotaName,Value]" --output table --profile data-science-user --region eu-west-1`
+6. Prueba quotas:
+   - `aws service-quotas list-service-quotas --service-code sagemaker --profile data-science-user --region eu-west-1`
 
-## Alternativa automatizada (script)
-Si prefieres aplicar/verificar todo en un solo paso desde terminal:
+## GitHub Actions role (fase 05)
+
+Estos dos archivos no se adjuntan al usuario `data-science-user`. Son insumos para un rol dedicado del runner, idealmente creado en la futura etapa `terraform/05_cicd`.
+
+Sugerencia de rol:
+
+- nombre: `titanic-sagemaker-github-actions-dev`
+- trust policy: `docs/aws/policies/11-gha-oidc-trust-policy.json`
+- permissions policy: `docs/aws/policies/12-gha-sagemaker-deployer-policy.json`
+
+Reglas:
+
+- usa OIDC; no uses access keys estaticas en GitHub
+- limita el trust al repo `JoanClaverolVolotea/titanic_sagemaker`
+- si usas GitHub Environments, conserva `dev` y `prod` en el `sub` del trust
+
+## Alternativa automatizada para el usuario DS
 
 ```bash
 # Desde la raiz del repo
 AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --apply
 
-# Solo validacion (sin cambios en AWS)
+# Solo validacion
 AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
 ```
 
 El script:
-- Verifica cuenta, usuario y JSON locales.
-- Crea/actualiza las 7 policies operativas (versionado IAM).
-- Adjunta policies base faltantes al usuario.
-- Requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario.
-- Falla si no se ejecuta con perfil `data-science-user`.
+
+- valida cuenta, usuario y JSON locales
+- crea o versiona las 9 managed policies del usuario
+- adjunta las policies faltantes a `data-science-user`
+- requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario
+- no crea ni actualiza los documentos `11` y `12` del rol de GitHub Actions
 
 ## Notas de seguridad
-- El flujo recomendado es que el usuario humano asuma roles de workload/deploy en vez de operar todo con permisos directos.
-- `iam:PassRole` esta acotado por nombre de rol y por `iam:PassedToService`.
-- Operaciones regionales de observabilidad quedaron acotadas a `eu-west-1` via `aws:RequestedRegion`.
-- Evitar `Action: "*"` y `Resource: "*"` para operaciones de escritura.
+
+- `06-ds-s3-tutorial-bucket-bootstrap.json` usa `s3:Get*` solo sobre el ARN del bucket de tutorial porque Terraform puede leer configuraciones `GetBucket...` adicionales durante `refresh/import`.
+- `09-ds-sagemaker-authoring-runtime.json` y `12-gha-sagemaker-deployer-policy.json` usan `Resource: "*"` en parte de las acciones de create/start/update porque SageMaker no soporta de forma consistente restricciones por ARN en todos esos APIs; el alcance se reduce por region y por `iam:PassRole` separado.
+- `03-ds-passrole-restricted.json` ahora incluye el patron real `titanic-sagemaker-pipeline-*` usado por Terraform.
+- El flujo recomendado sigue siendo separar identidad humana, role runtime de SageMaker y role OIDC de GitHub Actions.

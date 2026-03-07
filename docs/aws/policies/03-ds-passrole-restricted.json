@@ -6,6 +6,7 @@
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-pipeline-*",
         "arn:aws:iam::939122281183:role/titanic-sagemaker-sagemaker-execution-*",
         "arn:aws:iam::939122281183:role/titanic-sagemaker-stepfunctions-*",
         "arn:aws:iam::939122281183:role/titanic-sagemaker-lambda-*",

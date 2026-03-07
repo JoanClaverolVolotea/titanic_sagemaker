@@ -1,144 +1,123 @@
 # 04 Serving SageMaker
 
 ## Objetivo y contexto
-Publicar inferencia de forma controlada usando SageMaker Hosting a partir del `ModelPackage`
-registrado en fase 03, usando el SDK V3 `ModelBuilder` para deployment y
-`Endpoint.invoke()` para inferencia.
+Promover un modelo registrado hacia endpoints de `staging` y `prod` usando el patron V3
+`ModelPackage -> ModelBuilder -> build() -> deploy() -> invoke()`.
 
-Alcance de cierre:
-1. Aprobar `ModelPackage` en Model Registry.
-2. Desplegar endpoint `staging`.
-3. Ejecutar smoke tests de inferencia.
-4. Promover a endpoint `prod` solo si `staging` pasa.
+La fuente de verdad de serving es el `ModelPackageArn` creado por la fase 03. El deploy no
+consume artefactos ad hoc fuera del registry.
 
 ## Resultado minimo esperado
-1. `ModelPackageArn` aprobado y trazable al pipeline de fase 03.
-2. Endpoint `staging` en estado `InService`.
-3. Smoke test de `staging` documentado con resultado `pass`.
-4. Endpoint `prod` en estado `InService` despues de gate manual.
-5. Ruta de rollback y cleanup documentada.
+1. Un `ModelPackageArn` aprobado y listo para despliegue.
+2. Un endpoint de `staging` creado con `ModelBuilder`.
+3. Un smoke test ejecutado con `endpoint.invoke(...)`.
+4. Un endpoint de `prod` desplegado solo despues del smoke test.
 
-## Fuentes oficiales usadas en esta fase
-1. SageMaker V3 Inference: `vendor/sagemaker-python-sdk/docs/inference/index.rst`
-2. ModelBuilder API: `vendor/sagemaker-python-sdk/docs/api/sagemaker_serve.rst`
-3. Core resources (Endpoint, Model): `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/resources.py`
-4. V3 E2E inference example: `vendor/sagemaker-python-sdk/v3-examples/inference-examples/train-inference-e2e-example.ipynb`
-5. `https://docs.aws.amazon.com/sagemaker/latest/dg/realtime-endpoints.html`
-6. `https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_InvokeEndpoint.html`
-7. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry-models.html`
-
-## Estandar SDK en esta fase
-
-Serving y promocion se ejecutan con patrones de SageMaker SDK V3:
-- `sagemaker.serve.ModelBuilder` para construir y desplegar modelos.
-- `sagemaker.core.resources.Endpoint` para invocacion y operaciones de recurso.
-- `sagemaker.core.helper.session_helper.Session()` para bootstrap de sesion.
-- `boto3` como fallback operativo para update de endpoint existente cuando aplica.
+## Fuentes locales alineadas con SDK V3
+1. `vendor/sagemaker-python-sdk/docs/quickstart.rst`
+2. `vendor/sagemaker-python-sdk/docs/inference/index.rst`
+3. `vendor/sagemaker-python-sdk/docs/api/sagemaker_serve.rst`
+4. `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-model-registry-example/v3-model-registry-example.ipynb`
+5. `vendor/sagemaker-python-sdk/v3-examples/model-customization-examples/model_builder_deployment_notebook.ipynb`
+6. `vendor/sagemaker-python-sdk/v3-examples/inference-examples/train-inference-e2e-example.ipynb`
+7. `vendor/sagemaker-python-sdk/migration.md`
 
 ## Prerequisitos concretos
 1. Fases 00-03 completadas.
-2. Al menos un `ModelPackage` registrado en `titanic-survival-xgboost` con `PendingManualApproval`.
-3. Perfil AWS CLI: `data-science-user`.
-4. `SAGEMAKER_PIPELINE_ROLE_ARN` disponible (de Terraform output).
-5. `MODEL_PACKAGE_ARN` definido (de fase 03, celda 11).
-6. Ejecutar desde la raiz del repositorio.
+2. `MODEL_PACKAGE_ARN` disponible.
+3. `SAGEMAKER_EXECUTION_ROLE_ARN` disponible si el runtime no puede resolverlo solo.
+4. Ejecutar desde la raiz del repositorio.
 
 ## Contrato de serving
 | Parametro | Tipo | Default | Proposito |
 |---|---|---|---|
-| `ModelPackageArn` | String | Desde fase 03 | Modelo versionado a promover |
+| `ModelPackageArn` | String | requerido | Version aprobable para deploy |
 | `StagingEndpointName` | String | `titanic-survival-staging` | Endpoint de validacion |
 | `ProdEndpointName` | String | `titanic-survival-prod` | Endpoint productivo |
-| `InstanceType` | String | `ml.m5.large` | Tipo de instancia hosting |
+| `InstanceType` | String | `ml.m5.large` | Tipo de hosting |
 | `InitialInstanceCount` | Integer | `1` | Capacidad inicial |
 
-Gate:
-1. Solo promover a `prod` si `staging` esta `InService` y smoke test es `pass`.
-2. El deploy debe consumir `ModelPackageArn` -- no bypass del registry.
+## Bootstrap auto-contenido
 
-## Arquitectura end-to-end (Mermaid)
-```mermaid
-flowchart TD
-  R[Model Registry\nModelPackageArn] --> A[Approve ModelPackage]
-  A --> S[Deploy staging\nModelBuilder V3]
-  S --> T[Smoke Test\nEndpoint.invoke]
-  T --> G{Smoke pass?}
-  G -- yes --> P[Promote to prod\nModelBuilder V3]
-  G -- no --> RB[Rollback/Hold]
-  P --> M[Monitor + Evidence]
+Este bloque deja el tutorial listo para ejecutarse sin depender de variables exportadas en
+otra fase:
+
+```bash
+export AWS_PROFILE=data-science-user
+export AWS_REGION=eu-west-1
+export MODEL_PACKAGE_GROUP_NAME=$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw model_package_group_name)
+export MODEL_PACKAGE_ARN=$(python3 - <<'PY'
+import boto3
+import os
+
+session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+sm_client = session.client("sagemaker")
+resp = sm_client.list_model_packages(
+    ModelPackageGroupName=os.environ["MODEL_PACKAGE_GROUP_NAME"],
+    SortBy="CreationTime",
+    SortOrder="Descending",
+    MaxResults=1,
+)
+print(resp["ModelPackageSummaryList"][0]["ModelPackageArn"])
+PY
+)
+export SAGEMAKER_EXECUTION_ROLE_ARN=${SAGEMAKER_EXECUTION_ROLE_ARN:-$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw pipeline_execution_role_arn)}
+export STAGING_ENDPOINT_NAME=${STAGING_ENDPOINT_NAME:-titanic-survival-staging}
+export PROD_ENDPOINT_NAME=${PROD_ENDPOINT_NAME:-titanic-survival-prod}
+
+echo "MODEL_PACKAGE_GROUP_NAME=$MODEL_PACKAGE_GROUP_NAME"
+echo "MODEL_PACKAGE_ARN=$MODEL_PACKAGE_ARN"
+echo "SAGEMAKER_EXECUTION_ROLE_ARN=$SAGEMAKER_EXECUTION_ROLE_ARN"
 ```
-
-## IAM minimo para serving
-1. `sagemaker:DescribeModelPackage`, `sagemaker:UpdateModelPackage`.
-2. `sagemaker:CreateModel`, `sagemaker:CreateEndpointConfig`, `sagemaker:CreateEndpoint`,
-   `sagemaker:UpdateEndpoint`, `sagemaker:DescribeEndpoint`, `sagemaker:InvokeEndpoint`,
-   `sagemaker:DeleteEndpoint`, `sagemaker:DeleteEndpointConfig`, `sagemaker:DeleteModel`.
-3. `iam:PassRole` limitado al rol de ejecucion de SageMaker.
-4. `s3:GetObject` sobre prefijos de artefactos del modelo.
 
 ## Workshop paso a paso (celdas ejecutables)
 
-### Celda 00 -- Bootstrap de sesion V3
+### Celda 00 -- Bootstrap V3
 
 ```python
-import json
 import os
-import time
-from datetime import datetime, timezone
-from importlib.metadata import PackageNotFoundError, version
 
 import boto3
-from botocore.exceptions import ClientError
-
-from sagemaker.core.helper.session_helper import Session
-from sagemaker.core.resources import Endpoint, EndpointConfig, Model
+from sagemaker.core.helper.session_helper import Session, get_execution_role
+from sagemaker.core.resources import ModelPackage
 from sagemaker.serve.model_builder import ModelBuilder
-
-try:
-    sm_version = version("sagemaker")
-except PackageNotFoundError:
-    sm_version = version("sagemaker-core")
-
-assert sm_version.split(".")[0] == "3", f"Se requiere V3, encontrado {sm_version}"
 
 AWS_PROFILE = os.getenv("AWS_PROFILE", "data-science-user")
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
-
-boto_sess = boto3.session.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
-sm_client = boto_sess.client("sagemaker")
-sm_runtime_client = boto_sess.client("sagemaker-runtime")
-session = Session(boto_session=boto_sess)
-
-print(f"Profile: {AWS_PROFILE}")
-print(f"Region: {AWS_REGION}")
-print(f"SDK: {sm_version}")
-```
-
-### Celda 01 -- Parametros de serving
-
-```python
 MODEL_PACKAGE_ARN = os.environ["MODEL_PACKAGE_ARN"]
 STAGING_ENDPOINT_NAME = os.getenv("STAGING_ENDPOINT_NAME", "titanic-survival-staging")
 PROD_ENDPOINT_NAME = os.getenv("PROD_ENDPOINT_NAME", "titanic-survival-prod")
 INSTANCE_TYPE = os.getenv("INSTANCE_TYPE", "ml.m5.large")
 INITIAL_INSTANCE_COUNT = int(os.getenv("INITIAL_INSTANCE_COUNT", "1"))
-SAGEMAKER_EXEC_ROLE_ARN = os.environ["SAGEMAKER_PIPELINE_ROLE_ARN"]
 
-stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+boto_session = boto3.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
+session = Session(boto_session=boto_session)
+sm_client = boto_session.client("sagemaker")
 
+try:
+    role_arn = get_execution_role()
+except Exception:
+    role_arn = os.environ["SAGEMAKER_EXECUTION_ROLE_ARN"]
+
+print(f"Region: {session.boto_region_name}")
+try:
+    print(f"SageMaker default bucket: {session.default_bucket()}")
+except Exception as exc:
+    print(f"SageMaker default bucket no disponible con el IAM actual: {exc}")
 print(f"ModelPackageArn: {MODEL_PACKAGE_ARN}")
-print(f"Staging: {STAGING_ENDPOINT_NAME}")
-print(f"Prod: {PROD_ENDPOINT_NAME}")
 ```
 
-### Celda 02 -- Validar y aprobar ModelPackage
+### Celda 01 -- Aprobar el Model Package si sigue pendiente
 
 ```python
-mp = sm_client.describe_model_package(ModelPackageName=MODEL_PACKAGE_ARN)
-print(f"ModelPackageStatus: {mp['ModelPackageStatus']}")
-print(f"ModelApprovalStatus: {mp['ModelApprovalStatus']}")
+mp_desc = sm_client.describe_model_package(ModelPackageName=MODEL_PACKAGE_ARN)
+print(f"ModelPackageStatus: {mp_desc['ModelPackageStatus']}")
+print(f"ModelApprovalStatus: {mp_desc['ModelApprovalStatus']}")
 
-if mp["ModelApprovalStatus"] != "Approved":
+if mp_desc["ModelApprovalStatus"] != "Approved":
     sm_client.update_model_package(
         ModelPackageArn=MODEL_PACKAGE_ARN,
         ModelApprovalStatus="Approved",
@@ -146,286 +125,113 @@ if mp["ModelApprovalStatus"] != "Approved":
     print("ModelPackage aprobado")
 ```
 
-### Celda 03 -- Funciones de deploy y utilidades
+### Celda 02 -- Construir `ModelBuilder` desde el registry
 
 ```python
-def endpoint_exists(endpoint_name: str) -> bool:
-    """Verifica si un endpoint existe."""
-    try:
-        sm_client.describe_endpoint(EndpointName=endpoint_name)
-        return True
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in {"ValidationException", "ResourceNotFound", "ResourceNotFoundException"}:
-            return False
-        raise
+model_package = ModelPackage.get(model_package_name=MODEL_PACKAGE_ARN)
 
-
-def wait_endpoint(endpoint_name: str, timeout_sec: int = 1800):
-    """Espera a que un endpoint alcance InService o falle."""
-    start = time.time()
-    while True:
-        desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
-        status = desc["EndpointStatus"]
-        print(f"  {endpoint_name}: {status}")
-        if status == "InService":
-            return desc
-        if status in {"Failed", "OutOfService"}:
-            raise RuntimeError(
-                f"Endpoint {endpoint_name} en estado {status}: {desc.get('FailureReason')}"
-            )
-        if time.time() - start > timeout_sec:
-            raise TimeoutError(f"Timeout esperando endpoint {endpoint_name}")
-        time.sleep(30)
-
-
-def deploy_new_endpoint(endpoint_name: str, model_package_arn: str):
-    """Despliega un nuevo endpoint usando ModelBuilder V3.
-
-    ModelBuilder.build() crea el SageMaker Model resource.
-    ModelBuilder.deploy() crea EndpointConfig + Endpoint y devuelve Endpoint.
-    """
-    # Obtener imagen y model_data del ModelPackage
-    mp_desc = sm_client.describe_model_package(ModelPackageName=model_package_arn)
-    container = mp_desc["InferenceSpecification"]["Containers"][0]
-    image_uri = container["Image"]
-    model_data_url = container["ModelDataUrl"]
-
-    model_builder = ModelBuilder(
-        s3_model_data_url=model_data_url,
-        image_uri=image_uri,
-        sagemaker_session=session,
-        role_arn=SAGEMAKER_EXEC_ROLE_ARN,
-    )
-
-    model_name = f"{endpoint_name}-model-{stamp}".lower()
-    core_model = model_builder.build(model_name=model_name)
-    print(f"  Model created: {core_model.model_name}")
-
-    core_endpoint = model_builder.deploy(
-        endpoint_name=endpoint_name,
-        instance_type=INSTANCE_TYPE,
-        initial_instance_count=INITIAL_INSTANCE_COUNT,
-    )
-    print(f"  Endpoint created: {core_endpoint.endpoint_name}")
-    return core_endpoint, {"path": "model-builder-v3", "endpoint": endpoint_name, "model": model_name}
-
-
-def update_existing_endpoint(endpoint_name: str, model_package_arn: str):
-    """Actualiza un endpoint existente (boto3 fallback).
-
-    ModelBuilder.deploy() no soporta update de endpoints existentes directamente.
-    Se usa boto3 para crear Model + EndpointConfig y luego UpdateEndpoint.
-    """
-    model_name = f"{endpoint_name}-model-{stamp}".lower()
-    endpoint_config_name = f"{endpoint_name}-cfg-{stamp}".lower()
-
-    sm_client.create_model(
-        ModelName=model_name,
-        ExecutionRoleArn=SAGEMAKER_EXEC_ROLE_ARN,
-        PrimaryContainer={"ModelPackageName": model_package_arn},
-    )
-
-    sm_client.create_endpoint_config(
-        EndpointConfigName=endpoint_config_name,
-        ProductionVariants=[
-            {
-                "VariantName": "AllTraffic",
-                "ModelName": model_name,
-                "InitialInstanceCount": INITIAL_INSTANCE_COUNT,
-                "InstanceType": INSTANCE_TYPE,
-                "InitialVariantWeight": 1.0,
-            }
-        ],
-    )
-
-    sm_client.update_endpoint(
-        EndpointName=endpoint_name,
-        EndpointConfigName=endpoint_config_name,
-    )
-    wait_endpoint(endpoint_name)
-
-    return None, {
-        "path": "boto3-fallback-update",
-        "endpoint": endpoint_name,
-        "model_name": model_name,
-        "endpoint_config_name": endpoint_config_name,
-    }
-
-
-def upsert_endpoint(endpoint_name: str, model_package_arn: str):
-    """Crea o actualiza un endpoint segun su existencia."""
-    if endpoint_exists(endpoint_name):
-        print(f"Endpoint {endpoint_name} existe, actualizando...")
-        return update_existing_endpoint(endpoint_name, model_package_arn)
-    print(f"Endpoint {endpoint_name} no existe, creando...")
-    return deploy_new_endpoint(endpoint_name, model_package_arn)
+staging_builder = ModelBuilder(
+    model=model_package,
+    role_arn=role_arn,
+    sagemaker_session=session,
+)
 ```
 
-### Celda 04 -- Desplegar staging
+### Celda 03 -- Desplegar staging
 
 ```python
-staging_endpoint, staging_assets = upsert_endpoint(STAGING_ENDPOINT_NAME, MODEL_PACKAGE_ARN)
-print(json.dumps(staging_assets, indent=2))
+staging_model = staging_builder.build(model_name=f"{STAGING_ENDPOINT_NAME}-model")
+staging_endpoint = staging_builder.deploy(
+    endpoint_name=STAGING_ENDPOINT_NAME,
+    instance_type=INSTANCE_TYPE,
+    initial_instance_count=INITIAL_INSTANCE_COUNT,
+)
+print(f"Staging endpoint: {staging_endpoint.endpoint_name}")
 ```
 
-### Celda 05 -- Smoke test en staging
+Nota operativa:
+- Si el endpoint ya existe, elimina el endpoint previo antes de reusar el mismo nombre.
+- Este tutorial favorece `build() -> deploy() -> invoke()` sobre flujos de update in-place no
+  cubiertos por los examples locales.
+
+### Celda 04 -- Smoke test de staging
 
 ```python
 sample_payload = "3,0,22,1,0,7.25,2\n1,1,38,1,0,71.2833,0\n"
-
-# V3 invoke via sagemaker-runtime client
-resp = sm_runtime_client.invoke_endpoint(
-    EndpointName=STAGING_ENDPOINT_NAME,
-    ContentType="text/csv",
-    Body=sample_payload.encode("utf-8"),
+response = staging_endpoint.invoke(
+    body=sample_payload,
+    content_type="text/csv",
 )
-preds = resp["Body"].read().decode("utf-8")
-
-print(f"Predictions: {preds}")
-assert preds.strip(), "Smoke test devolvio respuesta vacia"
+predictions = response.body.read().decode("utf-8")
+print(predictions)
+assert predictions.strip(), "Smoke test devolvio respuesta vacia"
 SMOKE_PASS = True
-print("Smoke test: PASS")
 ```
 
-Nota: en V3, si tienes un `Endpoint` object de `ModelBuilder.deploy()`, tambien puedes
-usar `endpoint.invoke(body=..., content_type="text/csv")` directamente. El patron con
-`sm_runtime_client.invoke_endpoint()` funciona como alternativa universal.
-
-### Celda 06 -- Gate de promocion y despliegue prod
+### Celda 05 -- Desplegar prod solo si staging pasa
 
 ```python
-assert SMOKE_PASS is True, "Smoke test fallido, no promover a prod"
+assert SMOKE_PASS is True, "No promover a prod si el smoke test falla"
 
-prod_endpoint, prod_assets = upsert_endpoint(PROD_ENDPOINT_NAME, MODEL_PACKAGE_ARN)
-print(json.dumps(prod_assets, indent=2))
+prod_builder = ModelBuilder(
+    model=model_package,
+    role_arn=role_arn,
+    sagemaker_session=session,
+)
+prod_model = prod_builder.build(model_name=f"{PROD_ENDPOINT_NAME}-model")
+prod_endpoint = prod_builder.deploy(
+    endpoint_name=PROD_ENDPOINT_NAME,
+    instance_type=INSTANCE_TYPE,
+    initial_instance_count=INITIAL_INSTANCE_COUNT,
+)
+print(f"Prod endpoint: {prod_endpoint.endpoint_name}")
 ```
 
-### Celda 07 -- Verificacion final
+### Celda 06 -- Verificacion final
 
 ```python
-for name in [STAGING_ENDPOINT_NAME, PROD_ENDPOINT_NAME]:
-    desc = sm_client.describe_endpoint(EndpointName=name)
-    print(f"{name}: {desc['EndpointStatus']} ({desc['EndpointArn']})")
+for endpoint_name in [STAGING_ENDPOINT_NAME, PROD_ENDPOINT_NAME]:
+    desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
+    print(f"{endpoint_name}: {desc['EndpointStatus']}")
 ```
 
-### Celda 08 -- Cleanup opcional para control de costos
+### Celda 07 -- Cleanup opcional
 
 ```python
-def cleanup_endpoint(endpoint_name: str):
-    """Elimina endpoint. No elimina model ni config por seguridad."""
-    try:
-        endpoint_desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
-        cfg_name = endpoint_desc["EndpointConfigName"]
-        sm_client.delete_endpoint(EndpointName=endpoint_name)
-        print(f"Endpoint eliminado: {endpoint_name}")
-        print(f"  Config asociado (no eliminado): {cfg_name}")
-        return {"endpoint": endpoint_name, "endpoint_config": cfg_name}
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in {"ValidationException", "ResourceNotFound", "ResourceNotFoundException"}:
-            print(f"Endpoint no existe: {endpoint_name}")
-            return None
-        raise
-
-
-# Descomentar para apagar entornos no productivos:
-# cleanup_endpoint(STAGING_ENDPOINT_NAME)
+# Cuando termines las validaciones no productivas, elimina staging para reducir costo.
+# staging_endpoint.delete()
 ```
 
-## Comandos CLI de verificacion operativa
+## Decisiones tecnicas y alternativas descartadas
+- El despliegue consume un `ModelPackage` del registry como entrada primaria.
+- `ModelBuilder(model=model_package)` es el patron preferido para serving gobernado.
+- El smoke test usa `endpoint.invoke()` en vez de patrones V2 tipo `predict()`.
+- Se elimina el fallback de update manual del endpoint como camino principal del tutorial.
 
-```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
-
-# Model Registry
-aws sagemaker describe-model-package \
-  --model-package-name "$MODEL_PACKAGE_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Aprobar modelo
-aws sagemaker update-model-package \
-  --model-package-arn "$MODEL_PACKAGE_ARN" \
-  --model-approval-status Approved \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Endpoints
-aws sagemaker describe-endpoint \
-  --endpoint-name titanic-survival-staging \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-aws sagemaker describe-endpoint \
-  --endpoint-name titanic-survival-prod \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Invoke via CLI
-aws sagemaker-runtime invoke-endpoint \
-  --endpoint-name titanic-survival-staging \
-  --content-type text/csv \
-  --body '3,0,22,1,0,7.25,2' \
-  /tmp/staging_pred.txt \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-cat /tmp/staging_pred.txt
-
-# Cleanup
-aws sagemaker delete-endpoint \
-  --endpoint-name titanic-survival-staging \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-```
-
-## Operacion avanzada
-
-### 1) Promocion controlada
-- `prod` solo puede usar `ModelPackageArn` en estado `Approved`.
-- Promocion valida requiere evidencia de smoke test en `staging`.
-
-### 2) Rollback minimo
-1. Conservar `EndpointConfigName` previo de `prod` antes de actualizar.
-2. Si hay regresion, ejecutar `UpdateEndpoint` apuntando al config previo:
-   ```bash
-   aws sagemaker update-endpoint \
-     --endpoint-name titanic-survival-prod \
-     --endpoint-config-name <config-previo> \
-     --profile data-science-user --region eu-west-1
-   ```
-
-### 3) Monitoreo minimo
-- Monitorear estado de endpoint (`InService`, `Updating`, `Failed`).
-- Registrar latencia/error de smoke test y timestamp de despliegue.
-
-### 4) Cleanup y control de costos
-- Eliminar `staging` al terminar validaciones cuando no se use 24/7.
-- Mantener checklist de endpoints activos por ambiente en cada iteracion.
-- Usar `scripts/check_tutorial_resources_active.sh --phase 04` para auditar.
-
-## Troubleshooting
-| Sintoma | Causa raiz probable | Accion recomendada |
-|---|---|---|
-| `ValidationException` en `CreateModel` | `ModelPackageArn` invalido | Validar ARN con `DescribeModelPackage` |
-| `ModelPackage` no promociona | Estado no actualizado | Ejecutar `UpdateModelPackage` a `Approved` |
-| Endpoint en `Failed` | Contenedor/artifact incompatible o IAM insuficiente | Revisar `FailureReason` en `DescribeEndpoint` |
-| `InvokeEndpoint` devuelve 4xx/5xx | Payload invalido o modelo no listo | Validar `ContentType`, formato CSV y estado `InService` |
-| Regresion funcional en `prod` | Modelo nuevo no cumple comportamiento | Rollback con `UpdateEndpoint` al config previo |
-| `ImportError: ModelBuilder` | Paquete SageMaker incorrecto o instalacion incompleta | Instalar `sagemaker>=3.5.0` |
+## IAM usado (roles/policies/permisos clave)
+- Perfil operativo: `data-science-user`.
+- Managed policies del operador para esta fase:
+  `DataScienceObservabilityReadOnly`, `DataSciencePassroleRestricted`,
+  `DataSciences3DataAccess` y `DataScienceSageMakerAuthoringRuntime`.
+- Execution role de SageMaker para crear modelos y endpoints.
+- Permisos de model registry para describir y aprobar el package.
 
 ## Evidencia requerida
-1. `ModelPackageArn` usado + `ModelApprovalStatus=Approved`.
-2. `EndpointArn` y estado `InService` para `staging` y `prod`.
-3. Resultado de smoke test de `staging`.
-4. Evidencia de gate manual previo a promocion de `prod`.
-5. Registro de rollback (config anterior y timestamp).
+1. `ModelPackageArn` y `ModelApprovalStatus=Approved`.
+2. Estado final de `staging` y `prod`.
+3. Resultado del smoke test.
 
 ## Criterio de cierre
-1. `staging` y `prod` existen en `InService`.
-2. `prod` se despliega solo despues de smoke test `pass` en `staging`.
-3. Trazabilidad completa a `ModelPackageArn` aprobado.
-4. Procedimiento de rollback y cleanup documentado.
+- El modelo se despliega desde un `ModelPackageArn` aprobado.
+- `staging` responde al smoke test.
+- `prod` solo se despliega despues del smoke test.
+- La traza `ModelPackage -> Endpoint` queda documentada.
 
 ## Riesgos/pendientes
-1. Coste elevado por endpoints activos 24/7 sin scheduler.
-2. Drift de configuracion si no se versiona `EndpointConfig` por despliegue.
-3. Falta de automatizacion CI/CD de la promocion (fase 05).
+- Reutilizar nombres de endpoint sin cleanup previo puede bloquear reejecuciones.
+- Mantener `staging` activo fuera de validaciones incrementa costo sin aportar evidencia nueva.
+- El rollback debe hacerse redeployando un `ModelPackageArn` anterior que ya este aprobado.
 
 ## Proximo paso
-Automatizar `ModelBuild` y `ModelDeploy` con CI/CD en `docs/tutorials/05-cicd-github-actions.md`.
+Formalizar el contrato de automatizacion alrededor de estas operaciones en
+`docs/tutorials/05-cicd-github-actions.md`.

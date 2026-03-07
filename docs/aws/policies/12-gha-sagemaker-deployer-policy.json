@@ -1,0 +1,96 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowIdentityCheck",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowTutorialBucketReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "curated/*",
+            "training/*",
+            "evaluation/*",
+            "pipeline/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowTutorialBucketObjectReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": [
+        "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/curated/*",
+        "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/training/*",
+        "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/evaluation/*",
+        "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/pipeline/*"
+      ]
+    },
+    {
+      "Sid": "AllowSageMakerReadForWorkflowCoordinationInEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:Describe*",
+        "sagemaker:List*"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "AllowSageMakerBuildDeployActionsInEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:AddTags",
+        "sagemaker:CreateEndpoint",
+        "sagemaker:CreateEndpointConfig",
+        "sagemaker:CreateModel",
+        "sagemaker:CreatePipeline",
+        "sagemaker:InvokeEndpoint",
+        "sagemaker:StartPipelineExecution",
+        "sagemaker:UpdateModelPackage",
+        "sagemaker:UpdatePipeline"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "PassOnlyProjectSageMakerRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-pipeline-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-sagemaker-execution-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "sagemaker.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

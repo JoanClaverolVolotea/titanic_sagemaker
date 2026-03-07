@@ -22,6 +22,8 @@ POLICY_NAMES=(
   "DataSciences3DataAccess"
   "DataScienceS3TutorialBucketBootstrap"
   "DataScienceSageMakerTrainingJobLifecycle"
+  "DataScienceSageMakerAuthoringRuntime"
+  "DataScienceSageMakerCleanupNonProd"
   "DataScienceServiceQuotasReadOnly"
 )
 
@@ -32,6 +34,8 @@ POLICY_FILES=(
   "${POLICY_DIR}/04-ds-s3-data-access.json"
   "${POLICY_DIR}/06-ds-s3-tutorial-bucket-bootstrap.json"
   "${POLICY_DIR}/07-ds-sagemaker-training-job-lifecycle.json"
+  "${POLICY_DIR}/09-ds-sagemaker-authoring-runtime.json"
+  "${POLICY_DIR}/10-ds-sagemaker-cleanup-nonprod.json"
   "${POLICY_DIR}/08-ds-service-quotas-readonly.json"
 )
 
@@ -41,7 +45,7 @@ Usage:
   scripts/ensure_ds_policies.sh [--apply|--check]
 
 Description:
-  Ensures the 7 project IAM managed policies exist (create/update) and are
+  Ensures the 9 project IAM managed policies exist (create/update) and are
   attached to user data-science-user. Uses AWS_PROFILE=data-science-user by
   default.
 

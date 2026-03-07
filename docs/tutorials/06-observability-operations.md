@@ -1,391 +1,192 @@
 # 06 Observability and Operations
 
 ## Objetivo y contexto
-Definir e implementar observabilidad operativa para el ciclo completo:
-1. Ejecuciones de SageMaker Pipeline.
-2. Endpoints de serving (`staging` y `prod`).
-3. Monitoreo de drift/calidad de modelo.
-4. Alertamiento y runbooks de respuesta.
+Definir una practica operativa minima centrada en recursos de SageMaker: pipeline
+executions, model packages, endpoints y artefactos de evaluacion.
 
-Estado actual: **backlog ejecutable** -- no cerrado end-to-end, pero con todos los
-comandos y configuraciones concretas para implementar cuando se alcance esta fase.
+Este tutorial elimina prescripciones detalladas sobre servicios AWS externos no cubiertos por
+la documentacion vendoreada del SDK. La meta aqui es dejar un runbook reproducible a partir
+de los recursos de SageMaker que el proyecto ya crea.
 
 ## Resultado minimo esperado
-1. Alarmas de CloudWatch para fallos de pipeline y endpoints.
-2. Reglas EventBridge para cambios de estado de pipeline/model/endpoint.
-3. Data capture habilitado para Model Monitor.
-4. Runbooks probados por sintoma critico.
+1. El operador puede inspeccionar el estado de un pipeline execution y sus steps.
+2. El operador puede localizar el ultimo `ModelPackageArn` y su approval status.
+3. El operador puede verificar el estado de `staging` y `prod`.
+4. El operador puede reejecutar un smoke test de inferencia.
+5. El operador puede validar el contrato de `evaluation.json`.
 
-## Fuentes oficiales usadas en esta fase
-1. `https://docs.aws.amazon.com/sagemaker/latest/dg/logging-cloudwatch.html`
-2. `https://docs.aws.amazon.com/sagemaker/latest/dg/monitoring-cloudwatch.html`
-3. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html`
-4. `https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-capture.html`
-5. `https://docs.aws.amazon.com/sagemaker/latest/dg/automating-sagemaker-with-eventbridge.html`
-6. `https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html`
-7. SageMaker V3 Core resources: `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/resources.py`
-8. SageMaker V3 Core shapes (DataCaptureConfig): `vendor/sagemaker-python-sdk/sagemaker-core/src/sagemaker/core/shapes.py`
+## Fuentes locales alineadas con SDK V3
+1. `vendor/sagemaker-python-sdk/docs/sagemaker_core/index.rst`
+2. `vendor/sagemaker-python-sdk/docs/inference/index.rst`
+3. `vendor/sagemaker-python-sdk/docs/ml_ops/index.rst`
+4. `vendor/sagemaker-python-sdk/docs/quickstart.rst`
+5. `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-pipeline-train-create-registry.ipynb`
+6. `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-model-registry-example/v3-model-registry-example.ipynb`
 
 ## Prerequisitos concretos
-1. Fases 00-04 completadas (pipeline y endpoints funcionales).
-2. Perfil AWS CLI: `data-science-user`.
-3. SageMaker SDK V3 instalado.
-4. Al menos un endpoint `InService` para configurar data capture.
+1. Fases 00-04 completadas.
+2. `PIPELINE_NAME`, `MODEL_PACKAGE_GROUP_NAME` y al menos un endpoint desplegado.
+3. Perfil `data-science-user` operativo.
 
-## Arquitectura de observabilidad (Mermaid)
+## Bootstrap auto-contenido
 
-```mermaid
-flowchart TD
-  Pipeline[SageMaker Pipeline] --> CW[CloudWatch Logs/Metrics]
-  Endpoint[SageMaker Endpoints] --> CW
-  Endpoint --> DC[Data Capture\nS3]
-  CW --> Alarms[CloudWatch Alarms]
-  Pipeline --> EB[EventBridge Rules]
-  Endpoint --> EB
-  EB --> SNS[SNS Notifications]
-  Alarms --> SNS
-  DC --> MM[Model Monitor\nBaseline + Schedule]
-  MM --> CW
-```
-
-## Entregable 1 -- Alarmas de CloudWatch
-
-### 1.1 Alarma para fallos de pipeline
+Este bloque reconstruye todas las variables del runbook sin depender de otra sesion:
 
 ```bash
 export AWS_PROFILE=data-science-user
 export AWS_REGION=eu-west-1
-export SNS_TOPIC_ARN="arn:aws:sns:${AWS_REGION}:<account-id>:titanic-alerts"
-
-# Crear SNS topic (si no existe)
-aws sns create-topic --name titanic-alerts \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Alarma por metricas custom de pipeline (requiere publicar metrica custom)
-aws cloudwatch put-metric-alarm \
-  --alarm-name "titanic-pipeline-failures" \
-  --alarm-description "SageMaker Pipeline execution failures" \
-  --namespace "AWS/SageMaker" \
-  --metric-name "PipelineExecutionFailed" \
-  --dimensions Name=PipelineName,Value=titanic-modelbuild-dev \
-  --statistic Sum \
-  --period 300 \
-  --evaluation-periods 1 \
-  --threshold 1 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --alarm-actions "$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
+export PIPELINE_NAME=${PIPELINE_NAME:-titanic-modelbuild-dev}
+export MODEL_PACKAGE_GROUP_NAME=${MODEL_PACKAGE_GROUP_NAME:-$(terraform -chdir=terraform/03_sagemaker_pipeline output -raw model_package_group_name)}
+export STAGING_ENDPOINT_NAME=${STAGING_ENDPOINT_NAME:-titanic-survival-staging}
+export PROD_ENDPOINT_NAME=${PROD_ENDPOINT_NAME:-titanic-survival-prod}
 ```
 
-### 1.2 Alarma para errores de endpoint
-
-```bash
-# 5xx errors en endpoint staging
-aws cloudwatch put-metric-alarm \
-  --alarm-name "titanic-staging-5xx" \
-  --alarm-description "Staging endpoint 5xx errors" \
-  --namespace "AWS/SageMaker" \
-  --metric-name "Invocation5XXErrors" \
-  --dimensions Name=EndpointName,Value=titanic-survival-staging \
-               Name=VariantName,Value=AllTraffic \
-  --statistic Sum \
-  --period 300 \
-  --evaluation-periods 2 \
-  --threshold 5 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --alarm-actions "$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Latencia alta P95 en endpoint prod
-aws cloudwatch put-metric-alarm \
-  --alarm-name "titanic-prod-latency-p95" \
-  --alarm-description "Prod endpoint P95 latency > 2s" \
-  --namespace "AWS/SageMaker" \
-  --metric-name "ModelLatency" \
-  --dimensions Name=EndpointName,Value=titanic-survival-prod \
-               Name=VariantName,Value=AllTraffic \
-  --extended-statistic p95 \
-  --period 300 \
-  --evaluation-periods 3 \
-  --threshold 2000000 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --alarm-actions "$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-```
-
-### 1.3 Verificar alarmas
-
-```bash
-aws cloudwatch describe-alarms \
-  --alarm-name-prefix "titanic-" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION" \
-  --query 'MetricAlarms[].{Name:AlarmName, State:StateValue}' \
-  --output table
-```
-
-## Entregable 2 -- EventBridge para cambios de estado
-
-### 2.1 Regla para cambio de estado de pipeline
-
-```bash
-aws events put-rule \
-  --name "titanic-pipeline-state-change" \
-  --event-pattern '{
-    "source": ["aws.sagemaker"],
-    "detail-type": ["SageMaker Pipeline Execution Status Change"],
-    "detail": {
-      "pipelineArn": [{"prefix": "arn:aws:sagemaker:'$AWS_REGION'"}],
-      "currentPipelineExecutionStatus": ["Failed", "Stopped"]
-    }
-  }' \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-aws events put-targets \
-  --rule "titanic-pipeline-state-change" \
-  --targets "Id=sns-target,Arn=$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-```
-
-### 2.2 Regla para cambio de estado de model package
-
-```bash
-aws events put-rule \
-  --name "titanic-model-approval-change" \
-  --event-pattern '{
-    "source": ["aws.sagemaker"],
-    "detail-type": ["SageMaker Model Package State Change"],
-    "detail": {
-      "ModelApprovalStatus": ["Approved", "Rejected"]
-    }
-  }' \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-aws events put-targets \
-  --rule "titanic-model-approval-change" \
-  --targets "Id=sns-target,Arn=$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-```
-
-### 2.3 Regla para estado de endpoint
-
-```bash
-aws events put-rule \
-  --name "titanic-endpoint-state-change" \
-  --event-pattern '{
-    "source": ["aws.sagemaker"],
-    "detail-type": ["SageMaker Endpoint Status Change"],
-    "detail": {
-      "EndpointName": [{"prefix": "titanic-survival"}],
-      "EndpointStatus": ["Failed", "OutOfService"]
-    }
-  }' \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-aws events put-targets \
-  --rule "titanic-endpoint-state-change" \
-  --targets "Id=sns-target,Arn=$SNS_TOPIC_ARN" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-```
-
-### 2.4 Verificar reglas
-
-```bash
-aws events list-rules \
-  --name-prefix "titanic-" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION" \
-  --query 'Rules[].{Name:Name, State:State}' \
-  --output table
-```
-
-## Entregable 3 -- Data Capture y Model Monitor
-
-### 3.1 Habilitar Data Capture en endpoint (V3)
-
-Al desplegar el endpoint con `ModelBuilder`, se puede agregar data capture config.
-Alternativamente, se configura via boto3 en el `EndpointConfig`:
+## Operador minimo: sesion y clientes
 
 ```python
+import os
+
 import boto3
-
-sm_client = boto3.client("sagemaker", region_name="eu-west-1")
-DATA_BUCKET = "<from-terraform-output>"
-ENDPOINT_NAME = "titanic-survival-staging"
-
-# Crear endpoint config con data capture
-sm_client.create_endpoint_config(
-    EndpointConfigName=f"{ENDPOINT_NAME}-dc-config",
-    ProductionVariants=[
-        {
-            "VariantName": "AllTraffic",
-            "ModelName": "<model-name>",
-            "InitialInstanceCount": 1,
-            "InstanceType": "ml.m5.large",
-            "InitialVariantWeight": 1.0,
-        }
-    ],
-    DataCaptureConfig={
-        "EnableCapture": True,
-        "InitialSamplingPercentage": 100,
-        "DestinationS3Uri": f"s3://{DATA_BUCKET}/monitoring/data-capture/{ENDPOINT_NAME}",
-        "CaptureOptions": [
-            {"CaptureMode": "Input"},
-            {"CaptureMode": "Output"},
-        ],
-        "CaptureContentTypeHeader": {
-            "CsvContentTypes": ["text/csv"],
-        },
-    },
-)
-```
-
-### 3.2 Crear baseline de Model Monitor
-
-```python
 from sagemaker.core.helper.session_helper import Session
-import boto3
 
-boto_session = boto3.Session(profile_name="data-science-user", region_name="eu-west-1")
+AWS_PROFILE = os.getenv("AWS_PROFILE", "data-science-user")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+PIPELINE_NAME = os.getenv("PIPELINE_NAME", "titanic-modelbuild-dev")
+MODEL_PACKAGE_GROUP_NAME = os.getenv("MODEL_PACKAGE_GROUP_NAME", "titanic-survival-xgboost")
+STAGING_ENDPOINT_NAME = os.getenv("STAGING_ENDPOINT_NAME", "titanic-survival-staging")
+PROD_ENDPOINT_NAME = os.getenv("PROD_ENDPOINT_NAME", "titanic-survival-prod")
+
+boto_session = boto3.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
 session = Session(boto_session=boto_session)
 sm_client = boto_session.client("sagemaker")
+sm_runtime_client = boto_session.client("sagemaker-runtime")
 
-# Crear baseline job
-sm_client.create_monitoring_schedule(
-    MonitoringScheduleName="titanic-data-quality-schedule",
-    MonitoringScheduleConfig={
-        "ScheduleConfig": {
-            "ScheduleExpression": "cron(0 */6 ? * * *)",  # Cada 6 horas
-        },
-        "MonitoringJobDefinition": {
-            "MonitoringInputs": [
-                {
-                    "EndpointInput": {
-                        "EndpointName": "titanic-survival-prod",
-                        "LocalPath": "/opt/ml/processing/input",
-                    }
-                }
-            ],
-            "MonitoringOutputConfig": {
-                "MonitoringOutputs": [
-                    {
-                        "S3Output": {
-                            "S3Uri": f"s3://{DATA_BUCKET}/monitoring/results",
-                            "LocalPath": "/opt/ml/processing/output",
-                            "S3UploadMode": "EndOfJob",
-                        }
-                    }
-                ]
-            },
-            "MonitoringResources": {
-                "ClusterConfig": {
-                    "InstanceCount": 1,
-                    "InstanceType": "ml.m5.large",
-                    "VolumeSizeInGB": 20,
-                }
-            },
-            "RoleArn": "<sagemaker-execution-role-arn>",
-        },
-    },
+print(f"Region: {session.boto_region_name}")
+try:
+    print(f"SageMaker default bucket: {session.default_bucket()}")
+except Exception as exc:
+    print(f"SageMaker default bucket no disponible con el IAM actual: {exc}")
+```
+
+## Entregable 1 -- Inspeccion de pipeline executions
+
+```python
+executions = sm_client.list_pipeline_executions(
+    PipelineName=PIPELINE_NAME,
+    MaxResults=5,
+)["PipelineExecutionSummaries"]
+
+for item in executions:
+    print(item["PipelineExecutionArn"], item["PipelineExecutionStatus"])
+
+latest_execution_arn = executions[0]["PipelineExecutionArn"]
+steps = sm_client.list_pipeline_execution_steps(
+    PipelineExecutionArn=latest_execution_arn,
+    SortOrder="Ascending",
+)["PipelineExecutionSteps"]
+
+for step in steps:
+    print(step["StepName"], step["StepStatus"])
+```
+
+## Entregable 2 -- Inspeccion de Model Registry
+
+```python
+packages = sm_client.list_model_packages(
+    ModelPackageGroupName=MODEL_PACKAGE_GROUP_NAME,
+    SortBy="CreationTime",
+    SortOrder="Descending",
+    MaxResults=5,
+)["ModelPackageSummaryList"]
+
+for package in packages:
+    desc = sm_client.describe_model_package(ModelPackageName=package["ModelPackageArn"])
+    print(package["ModelPackageArn"], desc["ModelApprovalStatus"])
+```
+
+## Entregable 3 -- Verificacion de endpoints
+
+```python
+for endpoint_name in [STAGING_ENDPOINT_NAME, PROD_ENDPOINT_NAME]:
+    desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
+    print(endpoint_name, desc["EndpointStatus"])
+```
+
+## Entregable 4 -- Smoke test operativo
+
+Smoke test auto-contenido sin depender del objeto `staging_endpoint` de otra fase:
+
+```python
+sample_payload = "3,0,22,1,0,7.25,2\n"
+
+response = sm_runtime_client.invoke_endpoint(
+    EndpointName=STAGING_ENDPOINT_NAME,
+    ContentType="text/csv",
+    Body=sample_payload.encode("utf-8"),
 )
+print(response["Body"].read().decode("utf-8"))
 ```
 
-## Entregable 4 -- Terraform para observabilidad (alternativa IaC)
-
-```hcl
-# terraform/06_observability/alarms.tf
-
-resource "aws_sns_topic" "alerts" {
-  name = "titanic-alerts-${var.environment}"
-  tags = { project = "titanic-sagemaker", env = var.environment }
-}
-
-resource "aws_cloudwatch_metric_alarm" "endpoint_5xx" {
-  alarm_name          = "titanic-${var.environment}-endpoint-5xx"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 2
-  metric_name         = "Invocation5XXErrors"
-  namespace           = "AWS/SageMaker"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = 5
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-
-  dimensions = {
-    EndpointName = "titanic-survival-${var.environment}"
-    VariantName  = "AllTraffic"
-  }
-
-  tags = { project = "titanic-sagemaker", env = var.environment }
-}
-
-resource "aws_cloudwatch_event_rule" "pipeline_failure" {
-  name = "titanic-pipeline-failure-${var.environment}"
-  event_pattern = jsonencode({
-    source      = ["aws.sagemaker"]
-    detail-type = ["SageMaker Pipeline Execution Status Change"]
-    detail = {
-      currentPipelineExecutionStatus = ["Failed"]
-    }
-  })
-  tags = { project = "titanic-sagemaker", env = var.environment }
-}
-
-resource "aws_cloudwatch_event_target" "pipeline_failure_sns" {
-  rule      = aws_cloudwatch_event_rule.pipeline_failure.name
-  target_id = "sns-target"
-  arn       = aws_sns_topic.alerts.arn
-}
-```
-
-## Runbook por sintoma (obligatorio)
-| Sintoma | Causa raiz probable | Accion inmediata | Evidencia a guardar |
-|---|---|---|---|
-| Endpoint no responde | Endpoint `Failed` o config invalido | `DescribeEndpoint` -> revisar `FailureReason` -> rollback | ARN, estado, timestamp, config |
-| Regresion tras promocion | Modelo no cumple comportamiento | Congelar promocion, rollback `UpdateEndpoint` | `ModelPackageArn`, smoke results |
-| Pipeline drift/fallo recurrente | Cambio no controlado en datos/codigo/IAM | Revisar steps fallidos en CloudWatch | `PipelineExecutionArn`, step status |
-| Data capture no registra | `EnableCapture=false` o IAM insuficiente | Verificar `EndpointConfig` y permisos S3 | Config actual, policy adjunta |
-| Alarma falsa recurrente | Umbral sin calibrar | Ajustar threshold o periodo | Historico de alarmas |
-
-## Comandos de verificacion operativa
+## Entregable 5 -- Validacion del contrato de evaluacion
 
 ```bash
-export AWS_PROFILE=data-science-user
-export AWS_REGION=eu-west-1
+python3 - <<'PY'
+import json
+from pathlib import Path
 
-# Alarmas
-aws cloudwatch describe-alarms \
-  --alarm-name-prefix "titanic-" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Eventos SageMaker en EventBridge
-aws events list-rules \
-  --name-prefix "titanic-" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Logs de endpoints y jobs
-aws logs describe-log-groups \
-  --log-group-name-prefix "/aws/sagemaker" \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
-
-# Data capture
-aws s3 ls s3://$DATA_BUCKET/monitoring/data-capture/ \
-  --recursive --profile "$AWS_PROFILE"
-
-# Monitoring schedules
-aws sagemaker list-monitoring-schedules \
-  --profile "$AWS_PROFILE" --region "$AWS_REGION"
+payload = json.loads(Path("data/titanic/sagemaker/evaluation.json").read_text(encoding="utf-8"))
+assert "metrics" in payload and "accuracy" in payload["metrics"]
+assert "thresholds" in payload and "passed" in payload["thresholds"]
+print(json.dumps(payload, indent=2))
+PY
 ```
 
+## Runbook por sintoma
+| Sintoma | Causa raiz probable | Accion recomendada |
+|---|---|---|
+| El pipeline termina en `Failed` | Script de preprocess/evaluate, permisos o datos | Revisar el ultimo execution, identificar el step y corregir antes de relanzar |
+| No aparece `ModelPackageArn` nuevo | El gate no paso o el register no ejecuto | Confirmar `metrics.accuracy` y el status del `ConditionStep` |
+| `staging` no responde al smoke test | Endpoint no esta listo o el payload no coincide | Verificar `EndpointStatus` y repetir `endpoint.invoke(...)` |
+| `prod` no debe promoverse | `staging` no paso smoke | Mantener `ModelApprovalStatus` controlado y no desplegar prod |
+| `evaluation.json` no tiene `metrics.accuracy` | Drift del script `pipeline/code/evaluate.py` | Corregir el contrato antes de tocar el pipeline |
+
+## Alcance explicitamente excluido de este tutorial
+Quedan fuera de alcance aqui, porque no estan descritos por la documentacion vendoreada del
+SDK y el repo no trae una implementacion canonica V3 para ellos:
+- alarmas detalladas de CloudWatch,
+- reglas de EventBridge,
+- wiring de notificaciones externas,
+- configuracion final de data capture / monitoring schedules.
+
+Si esas piezas se implementan mas adelante, deben documentarse en `docs/iterations/` sin
+contradecir este runbook base de SageMaker.
+
+## Decisiones tecnicas y alternativas descartadas
+- La observabilidad base se centra en recursos de SageMaker que el proyecto ya usa.
+- Se prioriza inspeccion reproducible de pipeline, registry y endpoints sobre integraciones
+  externas no vendoreadas.
+- Se descarta prescribir comandos de otros servicios AWS como parte del tutorial canonico.
+
+## IAM usado (roles/policies/permisos clave)
+- Perfil operativo: `data-science-user`.
+- Para inspeccion y runbook base: `DataScienceObservabilityReadOnly`.
+- Si reejecutas el smoke test contra `staging`, añade `DataScienceSageMakerAuthoringRuntime`
+  porque `InvokeEndpoint` no forma parte del paquete readonly.
+
+## Evidencia requerida
+1. Ultimo `PipelineExecutionArn` y estados por step.
+2. `ModelPackageArn` mas reciente y `ModelApprovalStatus`.
+3. Estado actual de `staging` y `prod`.
+4. Salida del smoke test.
+
 ## Criterio de cierre
-1. Alarmas criticas definidas y en estado `OK`.
-2. Eventos de estado conectados por EventBridge.
-3. Data capture habilitado en al menos un endpoint.
-4. Baseline/schedule de Model Monitor configurado.
-5. Runbooks operativos documentados y probados.
+- El operador puede responder al estado actual del sistema usando solo recursos de SageMaker.
+- Existe un runbook reproducible sin depender de servicios externos al alcance del SDK local.
 
 ## Riesgos/pendientes
-1. Fatiga de alertas por umbrales sin calibracion.
-2. Coste adicional de captura/monitor sin politica de retencion.
-3. Falta de ownership por alerta si no se asigna responsable.
+- La capa de alarmado y notificaciones sigue pendiente de documentacion separada.
+- Si la evidencia local (`evaluation.json`) no se conserva, el triage pierde contexto.
 
 ## Proximo paso
-Implementar gobierno de costos en `docs/tutorials/07-cost-governance.md`.
+Aplicar reglas de costo y limpieza centradas en recursos de SageMaker en
+`docs/tutorials/07-cost-governance.md`.
