@@ -33,7 +33,20 @@ desde la perspectiva del SageMaker SDK V3. El runner resuelve nombres desde
 1. Fases 00-04 completadas.
 2. El repositorio debe exponer al runner el manifest del proyecto y los scripts locales.
 3. El sistema de CI debe proporcionar credenciales AWS validas via OIDC.
-4. El proveedor OIDC de GitHub ya debe existir en IAM.
+4. El provider OIDC de GitHub debe existir en IAM, o crearse una sola vez siguiendo
+   `docs/aws/policies/README.md`.
+
+## Bootstrap one-time del plano IAM de CI
+
+Antes de validar el contrato del runner por primera vez:
+
+1. Verifica o crea el provider OIDC `token.actions.githubusercontent.com` en IAM.
+2. Usa `config/project-manifest.json` como fuente de verdad del nombre del rol:
+   `titanic-sagemaker-gha-deployer-dev`.
+3. Ejecuta `python3 scripts/ensure_github_actions_role.py --apply` para converger trust +
+   inline policy del runner.
+
+Este bootstrap humano requiere `DataScienceBootstrapIamResources`.
 
 ## Bootstrap auto-contenido del contrato
 
@@ -68,6 +81,10 @@ print(resp["ModelPackageSummaryList"][0]["ModelPackageArn"])
 PY
 )
 ```
+
+Si `scripts/ensure_github_actions_role.py --check` devuelve
+`Missing GitHub OIDC provider`, resuelve primero el bootstrap one-time descrito arriba y en
+`docs/aws/policies/README.md`.
 
 ## Contrato del job `ModelBuild`
 
@@ -160,8 +177,10 @@ PY
 
 - El runner no debe reutilizar access keys de `data-science-user`.
 - El runner debe asumir un rol OIDC dedicado.
+- Nombre canonico del rol del runner segun el manifest: `titanic-sagemaker-gha-deployer-dev`.
 - `scripts/ensure_github_actions_role.py` puede crear o validar el rol del runner si el
-  proveedor OIDC ya existe.
+  provider OIDC ya existe.
+- El bootstrap humano del provider OIDC y del rol requiere `DataScienceBootstrapIamResources`.
 - Role de pipeline para processing/training/registry.
 - Role de hosting para modelos y endpoints.
 
@@ -180,7 +199,7 @@ PY
 
 ## Riesgos/pendientes
 
-- El proveedor OIDC de GitHub debe existir previamente en IAM.
+- El provider OIDC de GitHub es un bootstrap one-time y debe quedar documentado en la cuenta.
 - Si el workflow encapsula una logica distinta a las fases 03 y 04, aparecera drift.
 
 ## Proximo paso

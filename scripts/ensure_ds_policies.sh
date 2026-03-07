@@ -17,7 +17,6 @@ POLICY_DIR="${REPO_ROOT}/docs/aws/policies"
 
 POLICY_NAMES=(
   "DataScienceObservabilityReadOnly"
-  "DataScienceAssumeEnvironmentRoles"
   "DataSciencePassroleRestricted"
   "DataSciences3DataAccess"
   "DataScienceS3TutorialBucketBootstrap"
@@ -25,11 +24,11 @@ POLICY_NAMES=(
   "DataScienceSageMakerAuthoringRuntime"
   "DataScienceSageMakerCleanupNonProd"
   "DataScienceServiceQuotasReadOnly"
+  "DataScienceBootstrapIamResources"
 )
 
 POLICY_FILES=(
   "${POLICY_DIR}/01-ds-observability-readonly.json"
-  "${POLICY_DIR}/02-ds-assume-environment-roles.json"
   "${POLICY_DIR}/03-ds-passrole-restricted.json"
   "${POLICY_DIR}/04-ds-s3-data-access.json"
   "${POLICY_DIR}/06-ds-s3-tutorial-bucket-bootstrap.json"
@@ -37,6 +36,7 @@ POLICY_FILES=(
   "${POLICY_DIR}/09-ds-sagemaker-authoring-runtime.json"
   "${POLICY_DIR}/10-ds-sagemaker-cleanup-nonprod.json"
   "${POLICY_DIR}/08-ds-service-quotas-readonly.json"
+  "${POLICY_DIR}/13-ds-bootstrap-iam-resources.json"
 )
 
 usage() {
@@ -45,7 +45,7 @@ Usage:
   scripts/ensure_ds_policies.sh [--apply|--check]
 
 Description:
-  Ensures the 9 project IAM managed policies exist (create/update) and are
+  Ensures the 9 base project IAM managed policies exist (create/update) and are
   attached to user data-science-user. Uses AWS_PROFILE=data-science-user by
   default.
 

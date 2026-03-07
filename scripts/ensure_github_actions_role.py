@@ -154,6 +154,7 @@ def permissions_policy(env: dict[str, str]) -> str:
                         "sagemaker:CreatePipeline",
                         "sagemaker:InvokeEndpoint",
                         "sagemaker:StartPipelineExecution",
+                        "sagemaker:UpdateEndpoint",
                         "sagemaker:UpdateModelPackage",
                         "sagemaker:UpdatePipeline",
                     ],

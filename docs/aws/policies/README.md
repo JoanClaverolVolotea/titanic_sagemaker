@@ -14,20 +14,29 @@ Permitir que el proyecto pueda:
 - operar `training`, `pipeline`, `registry` y `serving` sin permisos admin
 - documentar y bootstrapear el rol OIDC de GitHub Actions sin depender de access keys estaticas
 
+## Orden recomendado
+
+1. Empieza por este README para bootstrapear `data-science-user` y el plano IAM minimo del proyecto.
+2. Valida el perfil con `aws sts get-caller-identity --profile data-science-user`.
+3. Cuando este directorio quede aplicado y validado, continua con `docs/tutorials/README.md`.
+
+Este README y `docs/tutorials/README.md` forman el handoff operativo autocontenido del proyecto.
+
 ## Archivos incluidos
 
 ### Politicas administradas del usuario `data-science-user`
 
 - `01-ds-observability-readonly.json`: lectura operativa de SageMaker, CloudWatch, logs, tags y recursos auxiliares usados por los runbooks.
-- `02-ds-assume-environment-roles.json`: `sts:AssumeRole` a roles de entorno documentados.
+- `02-ds-assume-environment-roles.json`: `sts:AssumeRole` opcional a roles de solo lectura del proyecto.
 - `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
 - `04-ds-s3-data-access.json`: lectura/escritura sobre el bucket real del tutorial y sus prefijos `raw/`, `curated/`, `training/`, `evaluation/` y `pipeline/`.
 - `05-ds-policy-administration.json`: bootstrap IAM para que `data-science-user` pueda crear/versionar/adjuntar las managed policies del propio tutorial.
 - `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos de bootstrap/configuracion del bucket de fase 00 convergido por script.
 - `07-ds-sagemaker-training-job-lifecycle.json`: stop/delete de training jobs del proyecto.
 - `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para validaciones operativas.
-- `09-ds-sagemaker-authoring-runtime.json`: acciones mutantes necesarias para fases 02-04 (`CreateTrainingJob`, `CreateProcessingJob`, `Create/UpdatePipeline`, `StartPipelineExecution`, `CreateModel`, `CreateEndpoint*`, `UpdateModelPackage`, `InvokeEndpoint`).
+- `09-ds-sagemaker-authoring-runtime.json`: acciones mutantes necesarias para fases 02-04 (`CreateTrainingJob`, `CreateProcessingJob`, `Create/UpdatePipeline`, `StartPipelineExecution`, `CreateModel`, `Create/UpdateEndpoint*`, `UpdateModelPackage`, `InvokeEndpoint`).
 - `10-ds-sagemaker-cleanup-nonprod.json`: cleanup no-productivo de endpoints, endpoint configs, models, pipelines y Model Registry.
+- `13-ds-bootstrap-iam-resources.json`: bootstrap IAM para converger roles del proyecto, validar/crear el Model Package Group y crear/validar el provider OIDC de GitHub.
 
 ### Documentos de rol para GitHub Actions
 
@@ -38,12 +47,12 @@ Permitir que el proyecto pueda:
 
 | Fase | Politicas minimas |
 | --- | --- |
-| `00-foundations` | `04`, `06` |
+| `00-foundations` | `04`, `06`, `13` |
 | `01-data-ingestion` | `04` |
 | `02-training-validation` | `01`, `03`, `04`, `07`, `09` |
 | `03-sagemaker-pipeline` | `01`, `03`, `04`, `09` |
-| `04-serving-sagemaker` | `01`, `03`, `04`, `09` |
-| `05-cicd-github-actions` | `11`, `12` para el runner; el humano solo necesita `01` para revisar evidencia |
+| `04-serving-sagemaker` | `01`, `03`, `04`, `09`; si reutilizas nombres de endpoint o limpias staging, añade `10` |
+| `05-cicd-github-actions` | `13` para bootstrap humano del provider OIDC y del rol; `11`, `12` para el runner; `01` para revisar evidencia |
 | `06-observability-operations` | `01`; si rehaces el smoke test, tambien `09` por `InvokeEndpoint` |
 | `07-cost-governance` | `01`, `04`, `07`, `08`, `10` |
 
@@ -57,12 +66,13 @@ El repo usa hoy:
 - Role de pipeline esperado por el manifest: `titanic-sagemaker-pipeline-dev`
 - Model Package Group esperado por el manifest: `titanic-survival-xgboost`
 - Execution role esperado por el manifest: `titanic-sagemaker-sagemaker-execution-dev`
+- Role OIDC esperado por el manifest: `titanic-sagemaker-gha-deployer-dev`
 
 Si ejecutas estos documentos en otra cuenta o region:
 
 - reemplaza el `Account ID` en los ARN
 - ajusta la condicion `aws:RequestedRegion`
-- ajusta nombres de bucket, pipeline role y Model Package Group a tu naming real
+- ajusta nombres de bucket, execution role, pipeline role, role OIDC y Model Package Group a tu naming real
 
 ## Credenciales estandar del operador DS
 
@@ -106,6 +116,7 @@ Los nombres `primary` y `rotation` son etiquetas operativas para documentacion y
 | `DataScienceServiceQuotasReadOnly` | `docs/aws/policies/08-ds-service-quotas-readonly.json` |
 | `DataScienceSageMakerAuthoringRuntime` | `docs/aws/policies/09-ds-sagemaker-authoring-runtime.json` |
 | `DataScienceSageMakerCleanupNonProd` | `docs/aws/policies/10-ds-sagemaker-cleanup-nonprod.json` |
+| `DataScienceBootstrapIamResources` | `docs/aws/policies/13-ds-bootstrap-iam-resources.json` |
 
 Para cada policy:
 
@@ -132,10 +143,11 @@ Adjunta como base del operador del tutorial:
 - `DataScienceSageMakerAuthoringRuntime`
 - `DataScienceSageMakerCleanupNonProd`
 - `DataScienceServiceQuotasReadOnly`
+- `DataScienceBootstrapIamResources`
 
 Adjunta segun necesidad adicional:
 
-- `DataScienceAssumeEnvironmentRoles`: si el operador humano debe asumir roles de entorno documentados.
+- `DataScienceAssumeEnvironmentRoles`: si el operador humano debe asumir roles opcionales de solo lectura fuera del flujo normal del tutorial.
 - `DataSciencePolicyAdministration`: si vas a usar `scripts/ensure_ds_policies.sh`.
 
 ### 5) Configurar el perfil AWS CLI unico
@@ -164,11 +176,15 @@ output = json
 
 ### 6) Validar por consola y CLI
 
-1. En `IAM -> Users -> data-science-user -> Permissions`, confirma que estan adjuntas las 8 policies operativas del tutorial, y `DataSciencePolicyAdministration` si vas a usar el script de ensure.
+1. En `IAM -> Users -> data-science-user -> Permissions`, confirma que estan adjuntas las 9 policies operativas base del tutorial, y `DataSciencePolicyAdministration` si vas a usar el script de ensure.
 2. Abre `IAM Policy Simulator`.
 3. Simula al menos estas acciones:
    - `iam:PassRole`
+   - `iam:GetRole`
+   - `iam:CreateRole`
+   - `iam:GetOpenIDConnectProvider`
    - `s3:PutObject`
+   - `sagemaker:CreateModelPackageGroup`
    - `sagemaker:CreateTrainingJob`
    - `sagemaker:StartPipelineExecution`
    - `sagemaker:UpdateModelPackage`
@@ -188,7 +204,7 @@ proveedor OIDC ya existe en IAM.
 
 Sugerencia de rol:
 
-- nombre: `titanic-sagemaker-github-actions-dev`
+- nombre: `titanic-sagemaker-gha-deployer-dev`
 - trust policy: `docs/aws/policies/11-gha-oidc-trust-policy.json`
 - permissions policy: `docs/aws/policies/12-gha-sagemaker-deployer-policy.json`
 
@@ -197,6 +213,20 @@ Reglas:
 - usa OIDC; no uses access keys estaticas en GitHub
 - limita el trust al repo `JoanClaverolVolotea/titanic_sagemaker`
 - si usas GitHub Environments, conserva `dev` y `prod` en el `sub` del trust
+
+### Bootstrap one-time del provider OIDC de GitHub
+
+Si `scripts/ensure_github_actions_role.py --check` falla con `Missing GitHub OIDC provider`,
+crea el provider una sola vez antes de converger el rol:
+
+1. Entra en `IAM -> Identity providers`.
+2. Pulsa `Add provider`.
+3. Selecciona `OpenID Connect`.
+4. Usa `https://token.actions.githubusercontent.com` como `Provider URL`.
+5. Usa `sts.amazonaws.com` como `Audience`.
+6. Guarda el provider y vuelve a ejecutar `python3 scripts/ensure_github_actions_role.py --check`.
+
+Para esta operacion manual, `data-science-user` necesita `DataScienceBootstrapIamResources`.
 
 ## Alternativa automatizada para el usuario DS
 
@@ -211,9 +241,10 @@ AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
 El script:
 
 - valida cuenta, usuario y JSON locales
-- crea o versiona las 9 managed policies del usuario
-- adjunta las policies faltantes a `data-science-user`
+- crea o versiona las 9 managed policies base del usuario
+- adjunta las policies base faltantes a `data-science-user`
 - requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario
+- no crea ni adjunta `DataScienceAssumeEnvironmentRoles`; esa policy sigue siendo opcional
 - no crea ni actualiza los documentos `11` y `12` del rol de GitHub Actions
 
 ## Notas de seguridad
@@ -223,4 +254,7 @@ El script:
 - `09-ds-sagemaker-authoring-runtime.json` y `12-gha-sagemaker-deployer-policy.json` usan `Resource: "*"` en parte de las acciones de create/start/update porque SageMaker no soporta de forma consistente restricciones por ARN en todos esos APIs; el alcance se reduce por region y por `iam:PassRole` separado.
 - `03-ds-passrole-restricted.json` incluye los patrones reales `titanic-sagemaker-pipeline-*`
   y `titanic-sagemaker-sagemaker-execution-*` usados por el manifest y los scripts.
+- `13-ds-bootstrap-iam-resources.json` usa `Resource: "*"` solo en la creacion del provider OIDC
+  y del Model Package Group porque esas APIs de bootstrap no ofrecen una restriccion por ARN
+  previa a la creacion; el resto del alcance se limita a los nombres reales del proyecto.
 - El flujo recomendado sigue siendo separar identidad humana, role runtime de SageMaker y role OIDC de GitHub Actions.

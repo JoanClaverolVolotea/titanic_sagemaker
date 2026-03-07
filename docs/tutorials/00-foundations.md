@@ -28,9 +28,11 @@ minimo de recursos duraderos que las fases 01-05 necesitan para operar sin Terra
 
 ## Prerequisitos concretos
 1. Python 3.9+ instalado.
-2. Perfil AWS CLI `data-science-user` configurado para el proyecto.
-3. `boto3` disponible para ejecutar los scripts de bootstrap.
-4. Ejecutar este tutorial desde la raiz del repositorio.
+2. Haber completado `docs/aws/policies/README.md` para bootstrapear y validar
+   `data-science-user`.
+3. Perfil AWS CLI `data-science-user` configurado para el proyecto.
+4. `boto3` disponible para ejecutar los scripts de bootstrap.
+5. Ejecutar este tutorial desde la raiz del repositorio.
 
 ## Estructura relevante del repositorio
 ```text
@@ -117,6 +119,12 @@ python3 scripts/ensure_project_bootstrap.py --check
 # python3 scripts/ensure_project_bootstrap.py --apply
 ```
 
+Notas operativas:
+- `--check` ya inspecciona bucket, roles IAM y `Model Package Group`.
+- Para usar `--check` o `--apply`, el operador necesita `DataScienceBootstrapIamResources`.
+- Si el bucket aun no existe y vas a convergerlo con `--apply`, añade tambien
+  `DataScienceS3TutorialBucketBootstrap`.
+
 ### 6. Fijar el mapa V3 del proyecto
 
 Patrones canonicos del roadmap, alineados con la documentacion local:
@@ -148,8 +156,10 @@ Reglas que se consideran fuera del estandar V3 de este roadmap:
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo del proyecto: `data-science-user`.
+- `scripts/ensure_project_bootstrap.py --check` y `--apply` requieren
+  `DataScienceBootstrapIamResources` porque validan o crean roles IAM y el `Model Package Group`.
 - Si este mismo operador va a ejecutar `scripts/ensure_project_bootstrap.py --apply`, debe
-  tener `DataScienceS3TutorialBucketBootstrap`.
+  tener tambien `DataScienceS3TutorialBucketBootstrap` para el bucket.
 - Para trabajar con los prefijos de datos/artefactos del bucket del proyecto, usa
   `DataSciences3DataAccess`.
 - Las fases 02-04 requieren un `SAGEMAKER_EXECUTION_ROLE_ARN` valido.

@@ -68,6 +68,7 @@
         "sagemaker:CreatePipeline",
         "sagemaker:InvokeEndpoint",
         "sagemaker:StartPipelineExecution",
+        "sagemaker:UpdateEndpoint",
         "sagemaker:UpdateModelPackage",
         "sagemaker:UpdatePipeline"
       ],

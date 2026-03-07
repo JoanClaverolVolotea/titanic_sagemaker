@@ -13,6 +13,7 @@
         "sagemaker:CreateProcessingJob",
         "sagemaker:CreateTrainingJob",
         "sagemaker:StartPipelineExecution",
+        "sagemaker:UpdateEndpoint",
         "sagemaker:UpdatePipeline"
       ],
       "Resource": "*",

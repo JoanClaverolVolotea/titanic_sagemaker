@@ -2,12 +2,10 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AssumeProjectEnvironmentRoles",
+      "Sid": "AssumeOptionalProjectReadonlyRoles",
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": [
-        "arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-dev",
-        "arn:aws:iam::939122281183:role/titanic-sagemaker-terraform-deployer-prod",
         "arn:aws:iam::939122281183:role/titanic-sagemaker-readonly-dev",
         "arn:aws:iam::939122281183:role/titanic-sagemaker-readonly-prod"
       ],

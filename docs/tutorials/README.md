@@ -3,6 +3,12 @@
 Roadmap oficial del proyecto Titanic SageMaker, alineado solo con la documentacion local del
 SageMaker Python SDK V3 y con los archivos del repositorio.
 
+## Antes de empezar
+1. Completa `docs/aws/policies/README.md` para bootstrapear `data-science-user`, el bucket del
+   tutorial y el bootstrap IAM minimo de CI.
+2. Valida `aws sts get-caller-identity --profile data-science-user`.
+3. Solo despues sigue el orden de ejecucion de este roadmap.
+
 ## Orden de ejecucion
 1. `docs/tutorials/00-foundations.md`
 2. `docs/tutorials/01-data-ingestion.md`
@@ -30,7 +36,8 @@ tratan como autoridad para inventar APIs distintas a las documentadas en el SDK 
    base del flujo MLOps.
 4. `endpoint.invoke(...)` es el patron canonico de inferencia en tiempo real.
 5. Todo deploy gobernado pasa por `ModelPackageArn`.
-6. Toda operacion AWS del proyecto se ejecuta con el perfil `data-science-user`.
+6. Toda operacion AWS humana/local del proyecto se ejecuta con el perfil `data-science-user`;
+   el runner de CI usa el rol OIDC documentado en `05-cicd-github-actions.md`.
 
 ## Estado por tutorial
 1. `00-foundations.md`: setup V3, `Session()` y convenciones del repo.
@@ -70,6 +77,7 @@ flowchart TD
 ## Convencion de credenciales
 - IAM user: `data-science-user`
 - AWS CLI profile: `data-science-user`
+- CI runner role: `titanic-sagemaker-gha-deployer-dev` via OIDC de GitHub Actions
 - Runtime execution role: `SAGEMAKER_EXECUTION_ROLE_ARN` o `get_execution_role()` en
   entornos gestionados por SageMaker
 

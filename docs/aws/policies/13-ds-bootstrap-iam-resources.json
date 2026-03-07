@@ -1,0 +1,73 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadProjectBootstrapRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-pipeline-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-sagemaker-execution-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-gha-deployer-*"
+      ]
+    },
+    {
+      "Sid": "CreateAndManageProjectBootstrapRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:TagRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-pipeline-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-sagemaker-execution-*",
+        "arn:aws:iam::939122281183:role/titanic-sagemaker-gha-deployer-*"
+      ]
+    },
+    {
+      "Sid": "ReadGitHubOidcProviderState",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviders"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CreateGitHubOidcProvider",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DescribeTutorialModelPackageGroup",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:DescribeModelPackageGroup"
+      ],
+      "Resource": "arn:aws:sagemaker:eu-west-1:939122281183:model-package-group/titanic-survival-xgboost"
+    },
+    {
+      "Sid": "CreateTutorialModelPackageGroupInEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:AddTags",
+        "sagemaker:CreateModelPackageGroup"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    }
+  ]
+}

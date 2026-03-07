@@ -28,6 +28,7 @@
         "arn:aws:iam::939122281183:policy/DataScienceSageMakerAuthoringRuntime",
         "arn:aws:iam::939122281183:policy/DataScienceSageMakerCleanupNonProd",
         "arn:aws:iam::939122281183:policy/DataScienceServiceQuotasReadOnly",
+        "arn:aws:iam::939122281183:policy/DataScienceBootstrapIamResources",
         "arn:aws:iam::939122281183:policy/DataSciencePolicyAdministration"
       ]
     },
@@ -50,6 +51,7 @@
         "arn:aws:iam::939122281183:policy/DataScienceSageMakerAuthoringRuntime",
         "arn:aws:iam::939122281183:policy/DataScienceSageMakerCleanupNonProd",
         "arn:aws:iam::939122281183:policy/DataScienceServiceQuotasReadOnly",
+        "arn:aws:iam::939122281183:policy/DataScienceBootstrapIamResources",
         "arn:aws:iam::939122281183:policy/DataSciencePolicyAdministration"
       ]
     },
