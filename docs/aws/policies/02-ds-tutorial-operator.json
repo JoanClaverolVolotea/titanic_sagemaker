@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AllowIdentityCheck",
+      "Sid": "STSCallerIdentity",
       "Effect": "Allow",
       "Action": [
         "sts:GetCallerIdentity"
@@ -10,16 +10,25 @@
       "Resource": "*"
     },
     {
-      "Sid": "AllowTutorialBucketReadWrite",
+      "Sid": "ReadTutorialBucketMetadata",
       "Effect": "Allow",
       "Action": [
         "s3:GetBucketLocation",
+        "s3:GetBucketTagging"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user"
+    },
+    {
+      "Sid": "ListTutorialBucketPrefixes",
+      "Effect": "Allow",
+      "Action": [
         "s3:ListBucket"
       ],
       "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user",
       "Condition": {
         "StringLike": {
           "s3:prefix": [
+            "raw/*",
             "curated/*",
             "training/*",
             "evaluation/*",
@@ -29,14 +38,15 @@
       }
     },
     {
-      "Sid": "AllowTutorialBucketObjectReadWrite",
+      "Sid": "ReadWriteTutorialObjects",
       "Effect": "Allow",
       "Action": [
+        "s3:AbortMultipartUpload",
         "s3:GetObject",
-        "s3:PutObject",
-        "s3:AbortMultipartUpload"
+        "s3:PutObject"
       ],
       "Resource": [
+        "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/raw/*",
         "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/curated/*",
         "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/training/*",
         "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user/evaluation/*",
@@ -44,7 +54,7 @@
       ]
     },
     {
-      "Sid": "AllowSageMakerReadForWorkflowCoordinationInEuWest1",
+      "Sid": "ReadTutorialSageMakerStateInEuWest1",
       "Effect": "Allow",
       "Action": [
         "sagemaker:Describe*",
@@ -58,7 +68,28 @@
       }
     },
     {
-      "Sid": "AllowSageMakerBuildDeployActionsInEuWest1",
+      "Sid": "ReadTutorialCloudWatchStateInEuWest1",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:Describe*",
+        "cloudwatch:Get*",
+        "cloudwatch:List*",
+        "logs:Describe*",
+        "logs:FilterLogEvents",
+        "logs:Get*",
+        "logs:ListTagsLogGroup",
+        "logs:StartQuery",
+        "logs:StopQuery"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "CreateAndUpdateTutorialSageMakerResourcesInEuWest1",
       "Effect": "Allow",
       "Action": [
         "sagemaker:AddTags",
@@ -66,10 +97,9 @@
         "sagemaker:CreateEndpointConfig",
         "sagemaker:CreateModel",
         "sagemaker:CreatePipeline",
-        "sagemaker:InvokeEndpoint",
+        "sagemaker:CreateTrainingJob",
         "sagemaker:StartPipelineExecution",
         "sagemaker:UpdateEndpoint",
-        "sagemaker:UpdateModelPackage",
         "sagemaker:UpdatePipeline"
       ],
       "Resource": "*",
@@ -78,6 +108,22 @@
           "aws:RequestedRegion": "eu-west-1"
         }
       }
+    },
+    {
+      "Sid": "ApproveTutorialModelPackages",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:UpdateModelPackage"
+      ],
+      "Resource": "arn:aws:sagemaker:eu-west-1:939122281183:model-package/titanic-survival-xgboost/*"
+    },
+    {
+      "Sid": "InvokeTutorialEndpoints",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:InvokeEndpoint"
+      ],
+      "Resource": "arn:aws:sagemaker:eu-west-1:939122281183:endpoint/titanic-*"
     },
     {
       "Sid": "PassOnlyProjectSageMakerRoles",

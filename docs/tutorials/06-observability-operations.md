@@ -164,9 +164,7 @@ contradecir este runbook base de SageMaker.
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo: `data-science-user`.
-- Para inspeccion y runbook base: `DataScienceObservabilityReadOnly`.
-- Si reejecutas el smoke test contra `staging`, añade `DataScienceSageMakerAuthoringRuntime`
-  porque `InvokeEndpoint` no forma parte del paquete readonly.
+- Para inspeccion, logs, metricas y smoke test operativo: `DataScienceTutorialOperator`.
 
 ## Evidencia requerida
 1. Ultimo `PipelineExecutionArn` y estados por step.

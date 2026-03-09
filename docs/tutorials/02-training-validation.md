@@ -251,10 +251,9 @@ aws s3 cp data/titanic/sagemaker/promotion_decision.json \
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo: `data-science-user`.
-- Managed policies del operador para esta fase:
-  `DataScienceObservabilityReadOnly`, `DataSciencePassroleRestricted`,
-  `DataSciences3DataAccess`, `DataScienceSageMakerTrainingJobLifecycle` y
-  `DataScienceSageMakerAuthoringRuntime`.
+- Managed policy del operador para esta fase: `DataScienceTutorialOperator`.
+- Si interrumpes la fase y necesitas stop/delete de training jobs o cleanup guiado, añade
+  `DataScienceTutorialCleanup`.
 - Execution role de SageMaker con permisos para training, lectura/escritura en S3 y logs.
 
 ## Evidencia

@@ -151,7 +151,7 @@ Nota operativa:
 - Este tutorial favorece `build() -> deploy() -> invoke()` sobre flujos de update in-place no
   cubiertos por los examples locales.
 - Si eliges borrar `staging` o `prod` para reusar el mismo nombre, necesitas tambien
-  `DataScienceSageMakerCleanupNonProd`.
+  `DataScienceTutorialCleanup`.
 
 ### Celda 04 -- Smoke test de staging
 
@@ -209,11 +209,9 @@ for endpoint_name in [STAGING_ENDPOINT_NAME, PROD_ENDPOINT_NAME]:
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo: `data-science-user`.
-- Managed policies del operador para esta fase:
-  `DataScienceObservabilityReadOnly`, `DataSciencePassroleRestricted`,
-  `DataSciences3DataAccess` y `DataScienceSageMakerAuthoringRuntime`.
+- Managed policy del operador para esta fase: `DataScienceTutorialOperator`.
 - Si reutilizas nombres de endpoint y prefieres borrar antes de redeployar, añade
-  `DataScienceSageMakerCleanupNonProd`.
+  `DataScienceTutorialCleanup`.
 - Execution role de SageMaker para crear modelos y endpoints.
 - Permisos de model registry para describir y aprobar el package.
 

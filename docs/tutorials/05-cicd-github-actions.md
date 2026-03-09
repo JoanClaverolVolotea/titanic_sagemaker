@@ -46,7 +46,11 @@ Antes de validar el contrato del runner por primera vez:
 3. Ejecuta `python3 scripts/ensure_github_actions_role.py --apply` para converger trust +
    inline policy del runner.
 
-Este bootstrap humano requiere `DataScienceBootstrapIamResources`.
+En este roadmap, `scripts/ensure_github_actions_role.py` es la fuente de verdad del trust y
+de la policy inline del runner. Ya no se mantienen JSON estaticos separados en
+`docs/aws/policies/`.
+
+Este bootstrap humano requiere `DataScienceTutorialBootstrap`.
 
 ## Bootstrap auto-contenido del contrato
 
@@ -55,8 +59,9 @@ necesarias con el mismo camino que seguira el runner:
 
 ```bash
 eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
-python3 scripts/ensure_project_bootstrap.py --check
-python3 scripts/ensure_github_actions_role.py --check
+# Si quieres revalidar recursos duraderos o el rol OIDC localmente:
+# python3 scripts/ensure_project_bootstrap.py --check
+# python3 scripts/ensure_github_actions_role.py --check
 eval "$(
   AWS_PROFILE="$AWS_PROFILE" \
   AWS_REGION="$AWS_REGION" \
@@ -180,7 +185,12 @@ Si `scripts/ensure_github_actions_role.py --check` devuelve
 - Nombre canonico del rol del runner segun el manifest: `titanic-sagemaker-gha-deployer-dev`.
 - `scripts/ensure_github_actions_role.py` puede crear o validar el rol del runner si el
   provider OIDC ya existe.
-- El bootstrap humano del provider OIDC y del rol requiere `DataScienceBootstrapIamResources`.
+- El trust y la policy inline del runner se generan desde el manifest dentro de
+  `scripts/ensure_github_actions_role.py`; no hay JSON estaticos canonicos en
+  `docs/aws/policies/` para este rol.
+- El bootstrap humano del provider OIDC y del rol requiere `DataScienceTutorialBootstrap`.
+- Para revisar localmente evidencia o reproducir el contrato SageMaker fuera del bootstrap
+  one-time, usa `DataScienceTutorialOperator`.
 - Role de pipeline para processing/training/registry.
 - Role de hosting para modelos y endpoints.
 

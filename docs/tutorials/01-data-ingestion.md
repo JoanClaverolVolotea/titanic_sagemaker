@@ -123,9 +123,9 @@ Rutas canonicas del roadmap:
 
 ## IAM usado (roles/policies/permisos clave)
 - Identidad base: `data-science-user`.
-- Policy minima para esta fase: `DataSciences3DataAccess`.
+- Policy minima para esta fase: `DataScienceTutorialOperator`.
 - Si el mismo operador tambien crea o reconfigura el bucket con
-  `scripts/ensure_project_bootstrap.py`, añade `DataScienceS3TutorialBucketBootstrap`.
+  `scripts/ensure_project_bootstrap.py`, añade `DataScienceTutorialBootstrap`.
 
 ## Evidencia
 Agregar:

@@ -1,260 +1,166 @@
 # IAM policies for tutorial operators
 
-Este directorio contiene dos tipos de artefactos IAM para ejecutar `docs/tutorials/`:
+Este directorio contiene solo las managed policies humanas necesarias para ejecutar
+`docs/tutorials/00-07`.
 
-- politicas administradas para el usuario operador `data-science-user`
-- documentos de confianza/permisos para el rol de GitHub Actions de la fase 05
+## Goal
 
-## Objetivo
+Mantener un set minimo y removible de permisos para el operador humano:
 
-Permitir que el proyecto pueda:
+- `DataScienceTutorialBootstrap`
+- `DataScienceTutorialOperator`
+- `DataScienceTutorialCleanup`
 
-- ejecutar las fases 00-07 con la identidad humana `data-science-user`
-- mantener `iam:PassRole` restringido a los roles reales del proyecto
-- operar `training`, `pipeline`, `registry` y `serving` sin permisos admin
-- documentar y bootstrapear el rol OIDC de GitHub Actions sin depender de access keys estaticas
+El rol de GitHub Actions no usa JSON estaticos en este directorio. Su trust policy y su
+permissions policy se generan desde `scripts/ensure_github_actions_role.py`.
 
-## Orden recomendado
+## Change
 
-1. Empieza por este README para bootstrapear `data-science-user` y el plano IAM minimo del proyecto.
-2. Valida el perfil con `aws sts get-caller-identity --profile data-science-user`.
-3. Cuando este directorio quede aplicado y validado, continua con `docs/tutorials/README.md`.
+El directorio queda reducido a:
 
-Este README y `docs/tutorials/README.md` forman el handoff operativo autocontenido del proyecto.
+- `01-ds-tutorial-bootstrap.json` -> `DataScienceTutorialBootstrap`
+- `02-ds-tutorial-operator.json` -> `DataScienceTutorialOperator`
+- `03-ds-tutorial-cleanup.json` -> `DataScienceTutorialCleanup`
 
-## Archivos incluidos
+No se incluyen aqui:
 
-### Politicas administradas del usuario `data-science-user`
+- policies opcionales de administracion IAM
+- policies opcionales de `AssumeRole` cross-env
+- documentos estaticos del rol OIDC de GitHub Actions
 
-- `01-ds-observability-readonly.json`: lectura operativa de SageMaker, CloudWatch, logs, tags y recursos auxiliares usados por los runbooks.
-- `02-ds-assume-environment-roles.json`: `sts:AssumeRole` opcional a roles de solo lectura del proyecto.
-- `03-ds-passrole-restricted.json`: `iam:PassRole` restringido a roles del proyecto y servicios esperados.
-- `04-ds-s3-data-access.json`: lectura/escritura sobre el bucket real del tutorial y sus prefijos `raw/`, `curated/`, `training/`, `evaluation/` y `pipeline/`.
-- `05-ds-policy-administration.json`: bootstrap IAM para que `data-science-user` pueda crear/versionar/adjuntar las managed policies del propio tutorial.
-- `06-ds-s3-tutorial-bucket-bootstrap.json`: permisos de bootstrap/configuracion del bucket de fase 00 convergido por script.
-- `07-ds-sagemaker-training-job-lifecycle.json`: stop/delete de training jobs del proyecto.
-- `08-ds-service-quotas-readonly.json`: lectura de Service Quotas para validaciones operativas.
-- `09-ds-sagemaker-authoring-runtime.json`: acciones mutantes necesarias para fases 02-04 (`CreateTrainingJob`, `CreateProcessingJob`, `Create/UpdatePipeline`, `StartPipelineExecution`, `CreateModel`, `Create/UpdateEndpoint*`, `UpdateModelPackage`, `InvokeEndpoint`).
-- `10-ds-sagemaker-cleanup-nonprod.json`: cleanup no-productivo de endpoints, endpoint configs, models, pipelines y Model Registry.
-- `13-ds-bootstrap-iam-resources.json`: bootstrap IAM para converger roles del proyecto, validar/crear el Model Package Group y crear/validar el provider OIDC de GitHub.
+## Why
 
-### Documentos de rol para GitHub Actions
+- `Bootstrap` cubre solo bucket, roles del proyecto, Model Package Group y el bootstrap
+  humano del provider/rol OIDC.
+- `Operator` cubre la ejecucion normal de fases 01-06 y la observabilidad base.
+- `Cleanup` cubre stop/delete/reset y conserva en exclusiva la eliminacion de objetos S3.
+- El rol de GitHub Actions ya se converge por script a partir del manifest; mantener JSON
+  duplicados aqui solo introduce drift.
 
-- `11-gha-oidc-trust-policy.json`: trust policy para asumir el rol del workflow via OIDC de GitHub Actions.
-- `12-gha-sagemaker-deployer-policy.json`: permisos del runner para ejecutar el contrato de `docs/tutorials/05-cicd-github-actions.md`.
+## Mapa fase -> policy minima
 
-## Mapa fase -> politicas requeridas
-
-| Fase | Politicas minimas |
+| Fase | Policy minima |
 | --- | --- |
-| `00-foundations` | `04`, `06`, `13` |
-| `01-data-ingestion` | `04` |
-| `02-training-validation` | `01`, `03`, `04`, `07`, `09` |
-| `03-sagemaker-pipeline` | `01`, `03`, `04`, `09` |
-| `04-serving-sagemaker` | `01`, `03`, `04`, `09`; si reutilizas nombres de endpoint o limpias staging, añade `10` |
-| `05-cicd-github-actions` | `13` para bootstrap humano del provider OIDC y del rol; `11`, `12` para el runner; `01` para revisar evidencia |
-| `06-observability-operations` | `01`; si rehaces el smoke test, tambien `09` por `InvokeEndpoint` |
-| `07-cost-governance` | `01`, `04`, `07`, `08`, `10` |
+| `00-foundations` | `DataScienceTutorialBootstrap` |
+| `01-data-ingestion` | `DataScienceTutorialOperator` |
+| `02-training-validation` | `DataScienceTutorialOperator` |
+| `03-sagemaker-pipeline` | `DataScienceTutorialOperator` |
+| `04-serving-sagemaker` | `DataScienceTutorialOperator`; si borras/rehaces endpoints, añade `DataScienceTutorialCleanup` |
+| `05-cicd-github-actions` | `DataScienceTutorialBootstrap` para el bootstrap humano one-time del provider OIDC y del rol; la policy del runner se converge con `scripts/ensure_github_actions_role.py` |
+| `06-observability-operations` | `DataScienceTutorialOperator` |
+| `07-cost-governance` | `DataScienceTutorialOperator` para inventario; `DataScienceTutorialCleanup` para stop/delete/reset |
 
-## Alineacion con la infraestructura actual
+## Politica de remocion
 
-El repo usa hoy:
+Cada policy debe poder quitarse sin romper otras capacidades:
 
-- AWS Account ID: `939122281183`
-- Region operativa: `eu-west-1`
-- Bucket de tutorial: `titanic-data-bucket-939122281183-data-science-user`
-- Role de pipeline esperado por el manifest: `titanic-sagemaker-pipeline-dev`
-- Model Package Group esperado por el manifest: `titanic-survival-xgboost`
-- Execution role esperado por el manifest: `titanic-sagemaker-sagemaker-execution-dev`
-- Role OIDC esperado por el manifest: `titanic-sagemaker-gha-deployer-dev`
+| Policy | Cuando adjuntarla | Cuando removerla |
+| --- | --- | --- |
+| `DataScienceTutorialBootstrap` | Fase 00 o bootstrap humano de CI | En cuanto termine el bootstrap durable |
+| `DataScienceTutorialOperator` | Fases 01-06 y revisiones operativas | Cuando el usuario ya no vaya a operar el tutorial |
+| `DataScienceTutorialCleanup` | Solo para cleanup o reset explicito | En cuanto termine la limpieza |
 
-Si ejecutas estos documentos en otra cuenta o region:
+Validacion de independencia:
 
-- reemplaza el `Account ID` en los ARN
-- ajusta la condicion `aws:RequestedRegion`
-- ajusta nombres de bucket, execution role, pipeline role, role OIDC y Model Package Group a tu naming real
+- Quitar `Bootstrap` no elimina operacion normal de SageMaker/S3 del tutorial.
+- Quitar `Cleanup` no elimina lectura, entrenamiento, pipeline ni serving.
+- Quitar `Cleanup` si elimina delete/reset porque `Operator` ya no tiene `s3:DeleteObject`.
 
-## Credenciales estandar del operador DS
+## Alineacion con la cuenta actual
 
-Definicion oficial para este proyecto:
+- AWS account: `939122281183`
+- Region: `eu-west-1`
+- Bucket: `titanic-data-bucket-939122281183-data-science-user`
+- Pipeline role: `titanic-sagemaker-pipeline-dev`
+- Execution role: `titanic-sagemaker-sagemaker-execution-dev`
+- Model Package Group: `titanic-survival-xgboost`
+- GitHub Actions role: `titanic-sagemaker-gha-deployer-dev`
 
-- IAM User: `data-science-user`
-- Access key logica activa: `data-science-user-primary`
-- Access key logica de rotacion: `data-science-user-rotation`
-- Perfil AWS CLI oficial: `data-science-user`
+## Aplicacion por AWS Console
 
-Nota: AWS genera el `AccessKeyId` real automaticamente (`AKIA...`).
-Los nombres `primary` y `rotation` son etiquetas operativas para documentacion y vault.
-
-## Aplicar politicas del usuario por AWS Console
-
-### 1) Confirmar cuenta y usuario
-
-1. Inicia sesion en AWS Console con la cuenta `939122281183`.
-2. Abre `IAM -> Users`.
-3. Verifica que existe `data-science-user`.
-
-### 2) Crear y registrar las access keys del usuario
-
-1. Ve a `IAM -> Users -> data-science-user -> Security credentials`.
-2. Crea una key para uso CLI y guardala en tu vault como `data-science-user-primary`.
-3. Crea una segunda key para rotacion controlada y guardala como `data-science-user-rotation`.
-4. Mantener maximo 2 keys activas.
-5. Nunca guardar secretos en el repositorio.
-
-### 3) Crear o actualizar las managed policies del usuario
+### 1. Crear o actualizar las managed policies humanas
 
 | Policy name | JSON source |
 | --- | --- |
-| `DataScienceObservabilityReadOnly` | `docs/aws/policies/01-ds-observability-readonly.json` |
-| `DataScienceAssumeEnvironmentRoles` | `docs/aws/policies/02-ds-assume-environment-roles.json` |
-| `DataSciencePassroleRestricted` | `docs/aws/policies/03-ds-passrole-restricted.json` |
-| `DataSciences3DataAccess` | `docs/aws/policies/04-ds-s3-data-access.json` |
-| `DataSciencePolicyAdministration` | `docs/aws/policies/05-ds-policy-administration.json` |
-| `DataScienceS3TutorialBucketBootstrap` | `docs/aws/policies/06-ds-s3-tutorial-bucket-bootstrap.json` |
-| `DataScienceSageMakerTrainingJobLifecycle` | `docs/aws/policies/07-ds-sagemaker-training-job-lifecycle.json` |
-| `DataScienceServiceQuotasReadOnly` | `docs/aws/policies/08-ds-service-quotas-readonly.json` |
-| `DataScienceSageMakerAuthoringRuntime` | `docs/aws/policies/09-ds-sagemaker-authoring-runtime.json` |
-| `DataScienceSageMakerCleanupNonProd` | `docs/aws/policies/10-ds-sagemaker-cleanup-nonprod.json` |
-| `DataScienceBootstrapIamResources` | `docs/aws/policies/13-ds-bootstrap-iam-resources.json` |
+| `DataScienceTutorialBootstrap` | `docs/aws/policies/01-ds-tutorial-bootstrap.json` |
+| `DataScienceTutorialOperator` | `docs/aws/policies/02-ds-tutorial-operator.json` |
+| `DataScienceTutorialCleanup` | `docs/aws/policies/03-ds-tutorial-cleanup.json` |
 
 Para cada policy:
 
 1. Ve a `IAM -> Policies`.
 2. Si no existe:
-   - `Create policy` -> pestaña `JSON`
-   - pega el archivo JSON
-   - `Next` -> usa exactamente el nombre de la tabla
+   - `Create policy`
+   - pega el JSON del archivo
+   - usa exactamente el nombre de la tabla
 3. Si ya existe:
-   - abre la policy -> `Policy versions`
-   - `Create policy version`
-   - pega el JSON actualizado y marca `Set as default`
+   - abre `Policy versions`
+   - crea una nueva version
+   - marca `Set as default`
    - si llegaste al limite de 5 versiones, elimina antes una no-default
 
-### 4) Adjuntar politicas al usuario `data-science-user`
+### 2. Adjuntar policies al usuario
 
-Adjunta como base del operador del tutorial:
+Baseline operativo:
 
-- `DataScienceObservabilityReadOnly`
-- `DataSciencePassroleRestricted`
-- `DataSciences3DataAccess`
-- `DataScienceS3TutorialBucketBootstrap`
-- `DataScienceSageMakerTrainingJobLifecycle`
-- `DataScienceSageMakerAuthoringRuntime`
-- `DataScienceSageMakerCleanupNonProd`
-- `DataScienceServiceQuotasReadOnly`
-- `DataScienceBootstrapIamResources`
+- `DataScienceTutorialOperator`
 
-Adjunta segun necesidad adicional:
+Adjunta temporalmente solo cuando haga falta:
 
-- `DataScienceAssumeEnvironmentRoles`: si el operador humano debe asumir roles opcionales de solo lectura fuera del flujo normal del tutorial.
-- `DataSciencePolicyAdministration`: si vas a usar `scripts/ensure_ds_policies.sh`.
+- `DataScienceTutorialBootstrap`
+- `DataScienceTutorialCleanup`
 
-### 5) Configurar el perfil AWS CLI unico
+### 3. Validar por consola y CLI
 
-```bash
-aws configure --profile data-science-user
-aws configure set region eu-west-1 --profile data-science-user
-aws configure set output json --profile data-science-user
-```
-
-Resultado esperado:
-
-```ini
-# ~/.aws/credentials
-[data-science-user]
-aws_access_key_id = <ACCESS_KEY_ID_PRIMARY>
-aws_secret_access_key = <SECRET_ACCESS_KEY_PRIMARY>
-```
-
-```ini
-# ~/.aws/config
-[profile data-science-user]
-region = eu-west-1
-output = json
-```
-
-### 6) Validar por consola y CLI
-
-1. En `IAM -> Users -> data-science-user -> Permissions`, confirma que estan adjuntas las 9 policies operativas base del tutorial, y `DataSciencePolicyAdministration` si vas a usar el script de ensure.
-2. Abre `IAM Policy Simulator`.
-3. Simula al menos estas acciones:
-   - `iam:PassRole`
-   - `iam:GetRole`
-   - `iam:CreateRole`
-   - `iam:GetOpenIDConnectProvider`
-   - `s3:PutObject`
-   - `sagemaker:CreateModelPackageGroup`
-   - `sagemaker:CreateTrainingJob`
-   - `sagemaker:StartPipelineExecution`
-   - `sagemaker:UpdateModelPackage`
-   - `sagemaker:DeleteEndpoint`
-4. Usa contexto de simulacion con region `eu-west-1`.
-5. Prueba perfil local:
+1. En `IAM -> Users -> data-science-user -> Permissions`, confirma que `Operator` es la unica
+   policy permanente del tutorial y que `Bootstrap`/`Cleanup` aparecen solo en sus ventanas
+   de uso.
+2. Simula acciones por capability:
+   - `s3:CreateBucket` con `DataScienceTutorialBootstrap`
+   - `sagemaker:CreateTrainingJob` con `DataScienceTutorialOperator`
+   - `sagemaker:StartPipelineExecution` con `DataScienceTutorialOperator`
+   - `sagemaker:UpdateModelPackage` con `DataScienceTutorialOperator`
+   - `sagemaker:DeleteEndpoint` con `DataScienceTutorialCleanup`
+   - `s3:DeleteObject` con `DataScienceTutorialCleanup`
+3. Valida perfil local:
    - `aws sts get-caller-identity --profile data-science-user`
    - `aws configure list --profile data-science-user`
-6. Prueba quotas:
-   - `aws service-quotas list-service-quotas --service-code sagemaker --profile data-science-user --region eu-west-1`
 
-## GitHub Actions role (fase 05)
+## GitHub Actions role
 
-Estos dos archivos no se adjuntan al usuario `data-science-user`. Son insumos para un rol
-dedicado del runner, que puede convergerse con `scripts/ensure_github_actions_role.py` si el
-proveedor OIDC ya existe en IAM.
+El rol OIDC del runner no se gestiona con JSON estaticos en este directorio.
 
-Sugerencia de rol:
+Uso esperado:
 
-- nombre: `titanic-sagemaker-gha-deployer-dev`
-- trust policy: `docs/aws/policies/11-gha-oidc-trust-policy.json`
-- permissions policy: `docs/aws/policies/12-gha-sagemaker-deployer-policy.json`
+1. crear una sola vez el provider OIDC `token.actions.githubusercontent.com`
+2. converger el rol `titanic-sagemaker-gha-deployer-dev`
+3. dejar que GitHub Actions asuma ese rol via OIDC
 
-Reglas:
+Fuente de verdad actual:
 
-- usa OIDC; no uses access keys estaticas en GitHub
-- limita el trust al repo `JoanClaverolVolotea/titanic_sagemaker`
-- si usas GitHub Environments, conserva `dev` y `prod` en el `sub` del trust
+- `scripts/ensure_github_actions_role.py`
+- `config/project-manifest.json`
 
-### Bootstrap one-time del provider OIDC de GitHub
+Para el bootstrap humano de esta parte, `data-science-user` necesita
+`DataScienceTutorialBootstrap`.
 
-Si `scripts/ensure_github_actions_role.py --check` falla con `Missing GitHub OIDC provider`,
-crea el provider una sola vez antes de converger el rol:
+## Validation
 
-1. Entra en `IAM -> Identity providers`.
-2. Pulsa `Add provider`.
-3. Selecciona `OpenID Connect`.
-4. Usa `https://token.actions.githubusercontent.com` como `Provider URL`.
-5. Usa `sts.amazonaws.com` como `Audience`.
-6. Guarda el provider y vuelve a ejecutar `python3 scripts/ensure_github_actions_role.py --check`.
-
-Para esta operacion manual, `data-science-user` necesita `DataScienceBootstrapIamResources`.
-
-## Alternativa automatizada para el usuario DS
+Comprobaciones locales recomendadas:
 
 ```bash
-# Desde la raiz del repo
-AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --apply
-
-# Solo validacion
-AWS_PROFILE=data-science-user scripts/ensure_ds_policies.sh --check
+python3 -m json.tool docs/aws/policies/01-ds-tutorial-bootstrap.json >/dev/null
+python3 -m json.tool docs/aws/policies/02-ds-tutorial-operator.json >/dev/null
+python3 -m json.tool docs/aws/policies/03-ds-tutorial-cleanup.json >/dev/null
+PYTHONPYCACHEPREFIX=/tmp/pycache python3 -m py_compile scripts/ensure_github_actions_role.py
 ```
 
-El script:
+## Docs to update
 
-- valida cuenta, usuario y JSON locales
-- crea o versiona las 9 managed policies base del usuario
-- adjunta las policies base faltantes a `data-science-user`
-- requiere que `DataSciencePolicyAdministration` ya este adjunta al usuario
-- no crea ni adjunta `DataScienceAssumeEnvironmentRoles`; esa policy sigue siendo opcional
-- no crea ni actualiza los documentos `11` y `12` del rol de GitHub Actions
+Cuando cambie este contrato, actualizar:
 
-## Notas de seguridad
-
-- `06-ds-s3-tutorial-bucket-bootstrap.json` usa `s3:Get*` sobre el ARN del bucket porque el
-  bootstrap script necesita validar configuraciones `GetBucket...` antes de converger.
-- `09-ds-sagemaker-authoring-runtime.json` y `12-gha-sagemaker-deployer-policy.json` usan `Resource: "*"` en parte de las acciones de create/start/update porque SageMaker no soporta de forma consistente restricciones por ARN en todos esos APIs; el alcance se reduce por region y por `iam:PassRole` separado.
-- `03-ds-passrole-restricted.json` incluye los patrones reales `titanic-sagemaker-pipeline-*`
-  y `titanic-sagemaker-sagemaker-execution-*` usados por el manifest y los scripts.
-- `13-ds-bootstrap-iam-resources.json` usa `Resource: "*"` solo en la creacion del provider OIDC
-  y del Model Package Group porque esas APIs de bootstrap no ofrecen una restriccion por ARN
-  previa a la creacion; el resto del alcance se limita a los nombres reales del proyecto.
-- El flujo recomendado sigue siendo separar identidad humana, role runtime de SageMaker y role OIDC de GitHub Actions.
+- `docs/aws/policies/README.md`
+- `docs/tutorials/00-foundations.md`
+- `docs/tutorials/05-cicd-github-actions.md`
+- `docs/tutorials/07-cost-governance.md`
+- `docs/iterations/ITER-YYYYMMDD-XX.md`

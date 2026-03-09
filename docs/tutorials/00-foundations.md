@@ -121,9 +121,7 @@ python3 scripts/ensure_project_bootstrap.py --check
 
 Notas operativas:
 - `--check` ya inspecciona bucket, roles IAM y `Model Package Group`.
-- Para usar `--check` o `--apply`, el operador necesita `DataScienceBootstrapIamResources`.
-- Si el bucket aun no existe y vas a convergerlo con `--apply`, añade tambien
-  `DataScienceS3TutorialBucketBootstrap`.
+- Para usar `--check` o `--apply`, el operador necesita `DataScienceTutorialBootstrap`.
 
 ### 6. Fijar el mapa V3 del proyecto
 
@@ -157,11 +155,9 @@ Reglas que se consideran fuera del estandar V3 de este roadmap:
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo del proyecto: `data-science-user`.
 - `scripts/ensure_project_bootstrap.py --check` y `--apply` requieren
-  `DataScienceBootstrapIamResources` porque validan o crean roles IAM y el `Model Package Group`.
-- Si este mismo operador va a ejecutar `scripts/ensure_project_bootstrap.py --apply`, debe
-  tener tambien `DataScienceS3TutorialBucketBootstrap` para el bucket.
-- Para trabajar con los prefijos de datos/artefactos del bucket del proyecto, usa
-  `DataSciences3DataAccess`.
+  `DataScienceTutorialBootstrap` porque validan o crean bucket, roles IAM y el
+  `Model Package Group`.
+- Para las fases 01-06, el bundle operativo pasa a ser `DataScienceTutorialOperator`.
 - Las fases 02-04 requieren un `SAGEMAKER_EXECUTION_ROLE_ARN` valido.
 - Este archivo ya no depende de Terraform; el bucket y los roles pueden convergerse con
   `scripts/ensure_project_bootstrap.py`.

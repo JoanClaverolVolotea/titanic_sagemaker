@@ -451,7 +451,7 @@ cleanup_s3_prefixes() {
   if [[ "${TARGET}" == "after-tutorial-2" ]]; then
     prefixes=("training/xgboost/" "evaluation/xgboost/")
   else
-    prefixes=("raw/" "curated/" "training/" "evaluation/")
+    prefixes=("raw/" "curated/" "training/" "evaluation/" "pipeline/runtime/")
   fi
 
   for prefix in "${prefixes[@]}"; do

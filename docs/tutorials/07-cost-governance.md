@@ -76,6 +76,8 @@ Si necesitas rehacer una fase completa:
 ```bash
 scripts/reset_tutorial_state.sh --target after-tutorial-2
 scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESET
+scripts/reset_tutorial_state.sh --target all
+scripts/reset_tutorial_state.sh --target all --apply --confirm RESET
 ```
 
 ## Entregable 3 -- Higiene de artefactos runtime
@@ -120,12 +122,10 @@ parte del estandar minimo V3 de este roadmap.
 
 ## IAM usado (roles/policies/permisos clave)
 - Perfil operativo: `data-science-user`.
-- `DataScienceObservabilityReadOnly` para `scripts/check_tutorial_resources_active.sh`.
-- `DataSciences3DataAccess` para revisar y limpiar prefijos runtime del bucket del tutorial.
-- `DataScienceSageMakerTrainingJobLifecycle` para training jobs.
-- `DataScienceSageMakerCleanupNonProd` para endpoints, endpoint configs, models, pipelines y
-  Model Registry en no-prod.
-- `DataScienceServiceQuotasReadOnly` si incluyes validaciones de quotas en el checklist.
+- `DataScienceTutorialOperator` para `scripts/check_tutorial_resources_active.sh` y revisar
+  prefijos runtime del bucket del tutorial.
+- `DataScienceTutorialCleanup` para `scripts/reset_tutorial_state.sh`, training jobs,
+  endpoints, endpoint configs, models, pipelines y Model Registry en no-prod.
 
 ## Evidencia requerida
 1. Salida de `scripts/check_tutorial_resources_active.sh`.

@@ -2,6 +2,31 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "STSCallerIdentity",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CreateAndConfigureTutorialBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:ListBucket",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketTagging",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::titanic-data-bucket-939122281183-data-science-user"
+    },
+    {
       "Sid": "ReadProjectBootstrapRoles",
       "Effect": "Allow",
       "Action": [
@@ -19,9 +44,9 @@
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
-        "iam:UpdateAssumeRolePolicy",
         "iam:PutRolePolicy",
-        "iam:TagRole"
+        "iam:TagRole",
+        "iam:UpdateAssumeRolePolicy"
       ],
       "Resource": [
         "arn:aws:iam::939122281183:role/titanic-sagemaker-pipeline-*",

@@ -20,22 +20,22 @@ TOTAL_INACTIVE=0
 TOTAL_UNKNOWN=0
 
 # shellcheck disable=SC2034
-SERVICE_ORDER=(s3 sagemaker ecs lambda stepfunctions eventbridge scheduler cloudwatch ecr ec2 budgets)
+SERVICE_ORDER=(s3 sagemaker cloudwatch)
 
 declare -A SERVICE_ACTIVE=()
 declare -A SERVICE_INACTIVE=()
 declare -A SERVICE_UNKNOWN=()
 
 declare -A PHASE_SERVICES=(
-  [00]="s3 budgets"
+  [00]="s3"
   [01]="s3"
   [02]="s3 sagemaker"
-  [03]="sagemaker stepfunctions eventbridge scheduler lambda"
-  [04]="sagemaker ecs ecr"
-  [05]="sagemaker ecs ecr stepfunctions lambda eventbridge scheduler"
-  [06]="cloudwatch sagemaker stepfunctions lambda ecs"
-  [07]="budgets scheduler eventbridge cloudwatch sagemaker ecs ec2"
-  [all]="s3 sagemaker ecs lambda stepfunctions eventbridge scheduler cloudwatch ecr ec2 budgets"
+  [03]="sagemaker"
+  [04]="sagemaker"
+  [05]="sagemaker"
+  [06]="cloudwatch sagemaker"
+  [07]="s3 cloudwatch sagemaker"
+  [all]="s3 sagemaker cloudwatch"
 )
 
 usage() {
@@ -315,7 +315,7 @@ check_s3() {
     add_result "s3" "bucket:${DATA_BUCKET}" "inactive" "not found or not accessible"
   fi
 
-  local prefixes=("raw/" "curated/" "training/" "evaluation/" "training/xgboost/" "evaluation/xgboost/")
+  local prefixes=("raw/" "curated/" "training/" "evaluation/" "training/xgboost/" "evaluation/xgboost/" "pipeline/runtime/")
   local prefix out
 
   for prefix in "${prefixes[@]}"; do

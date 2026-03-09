@@ -79,7 +79,8 @@ camino canonico de publicacion pasa a ser:
 
 ```bash
 eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
-python3 scripts/ensure_project_bootstrap.py --check
+# Si necesitas revalidar recursos duraderos fuera de la fase 00:
+# python3 scripts/ensure_project_bootstrap.py --check
 export ACCURACY_THRESHOLD=${ACCURACY_THRESHOLD:-$QUALITY_THRESHOLD_ACCURACY}
 ```
 
@@ -252,9 +253,9 @@ Cada cambio en `pipeline/code/` debe repetir estos dos pasos:
 ## IAM usado (roles/policies/permisos clave)
 
 - Perfil operativo: `data-science-user`.
-- Managed policies del operador para esta fase:
-  `DataScienceObservabilityReadOnly`, `DataSciencePassroleRestricted`,
-  `DataSciences3DataAccess` y `DataScienceSageMakerAuthoringRuntime`.
+- Managed policy del operador para esta fase: `DataScienceTutorialOperator`.
+- Si revalidas o reconverges bucket/roles/registry con `scripts/ensure_project_bootstrap.py`,
+  añade `DataScienceTutorialBootstrap`.
 - Role runtime del pipeline: `SAGEMAKER_PIPELINE_ROLE_ARN`.
 - `scripts/ensure_project_bootstrap.py` crea o actualiza el role de pipeline y el
   `Model Package Group` sin Terraform.
