@@ -1,87 +1,96 @@
-# Tutorial roadmap
+# Roadmap autocontenido
 
-Roadmap oficial del proyecto Titanic SageMaker, alineado solo con la documentacion local del
-SageMaker Python SDK V3 y con los archivos del repositorio.
+Este folder es el roadmap completo del proyecto Titanic SageMaker. La regla de uso es simple:
+solo necesitas estos tutoriales, una cuenta AWS ya preparada para `data-science-user`, `uv` y
+AWS CLI.
 
 ## Antes de empezar
-1. Completa `docs/aws/policies/README.md` para bootstrapear `data-science-user`, el bucket del
-   tutorial y el bootstrap IAM minimo de CI.
-2. Valida `aws sts get-caller-identity --profile data-science-user`.
-3. Solo despues sigue el orden de ejecucion de este roadmap.
+
+1. Configura el perfil AWS CLI `data-science-user`.
+2. Ten disponibles estos bundles IAM segun la fase:
+   - `DataScienceTutorialBootstrap` para `00` y el bootstrap OIDC de `05`
+   - `DataScienceTutorialOperator` para `01` a `06`
+   - `DataScienceTutorialCleanup` para borrados guiados de `04` y `07`
+3. Instala `uv`.
+4. Sigue el orden exacto de este folder.
 
 ## Orden de ejecucion
-1. `docs/tutorials/00-foundations.md`
-2. `docs/tutorials/01-data-ingestion.md`
-3. `docs/tutorials/02-training-validation.md`
-4. `docs/tutorials/03-sagemaker-pipeline.md`
-5. `docs/tutorials/04-serving-sagemaker.md`
-6. `docs/tutorials/05-cicd-github-actions.md`
-7. `docs/tutorials/06-observability-operations.md`
-8. `docs/tutorials/07-cost-governance.md`
 
-## Fuente de verdad del roadmap
-Solo se consideran fuentes normativas de SageMaker para este roadmap:
-- `vendor/sagemaker-python-sdk/docs/`
-- `vendor/sagemaker-python-sdk/docs/api/`
-- `vendor/sagemaker-python-sdk/v3-examples/`
-- `vendor/sagemaker-python-sdk/migration.md`
+1. [`00-foundations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/00-foundations.md)
+2. [`01-data-ingestion.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/01-data-ingestion.md)
+3. [`02-training-validation.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/02-training-validation.md)
+4. [`03-sagemaker-pipeline.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/03-sagemaker-pipeline.md)
+5. [`04-serving-sagemaker.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/04-serving-sagemaker.md)
+6. [`05-cicd-github-actions.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/05-cicd-github-actions.md)
+7. [`06-observability-operations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/06-observability-operations.md)
+8. [`07-cost-governance.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/07-cost-governance.md)
 
-Los scripts y archivos del repo se usan como implementacion local del proyecto, pero no se
-tratan como autoridad para inventar APIs distintas a las documentadas en el SDK vendoreado.
+## Contrato global del tutorial
 
-## Principios del roadmap
-1. `ModelTrainer` reemplaza patrones V2 de training.
-2. `ModelBuilder` reemplaza patrones V2 de deployment e inferencia.
-3. `PipelineSession`, `ProcessingStep`, `TrainingStep`, `ConditionStep` y `ModelStep` son la
-   base del flujo MLOps.
-4. `endpoint.invoke(...)` es el patron canonico de inferencia en tiempo real.
-5. Todo deploy gobernado pasa por `ModelPackageArn`.
-6. Toda operacion AWS humana/local del proyecto se ejecuta con el perfil `data-science-user`;
-   el runner de CI usa el rol OIDC documentado en `05-cicd-github-actions.md`.
+Todas las fases usan el mismo workspace local:
 
-## Estado por tutorial
-1. `00-foundations.md`: setup V3, `Session()` y convenciones del repo.
-2. `01-data-ingestion.md`: carga del dataset local del repo a S3.
-3. `02-training-validation.md`: baseline manual con `ModelTrainer` + `evaluation.json`.
-4. `03-sagemaker-pipeline.md`: pipeline durable con mapping V3, codigo en S3 del proyecto y publicacion via SDK upsert.
-5. `04-serving-sagemaker.md`: deploy desde `ModelPackageArn` con `ModelBuilder`.
-6. `05-cicd-github-actions.md`: contrato SageMaker del workflow, sin sintaxis externa al SDK.
-7. `06-observability-operations.md`: runbook operativo centrado en recursos de SageMaker.
-8. `07-cost-governance.md`: cleanup y gobierno de costo centrados en recursos de SageMaker.
-
-## Flujo end-to-end del roadmap
-```mermaid
-flowchart TD
-  F0[00 Foundations\nSession + V3 imports] --> D1[01 Data Ingestion\nraw + curated en S3]
-  D1 --> T2[02 Training + Validation\nModelTrainer + evaluation.json]
-  T2 --> P3[03 Pipeline\nS3 Code + SDK Upsert]
-  P3 --> S4[04 Serving\nModelPackage -> ModelBuilder -> invoke]
-  S4 --> C5[05 CI/CD Contract]
-  S4 --> O6[06 Observability]
-  S4 --> G7[07 Cost Governance]
+```text
+~/titanic-sagemaker-tutorial/
+  .env.tutorial
+  pyproject.toml
+  data/
+  artifacts/
+  mlops_assets/
+  .github/workflows/
 ```
 
-## Scripts operativos del roadmap
-- `scripts/prepare_titanic_splits.py`
-- `scripts/prepare_titanic_xgboost_inputs.py`
-- `scripts/check_tutorial_resources_active.sh`
-- `scripts/ensure_project_bootstrap.py`
-- `scripts/ensure_github_actions_role.py`
-- `scripts/reset_tutorial_state.sh`
-- `scripts/resolve_project_env.py`
-- `scripts/publish_pipeline_code.sh`
-- `scripts/upsert_pipeline.py`
-- `pipeline/code/preprocess.py`
-- `pipeline/code/evaluate.py`
+Reglas globales:
 
-## Convencion de credenciales
-- IAM user: `data-science-user`
-- AWS CLI profile: `data-science-user`
-- CI runner role: `titanic-sagemaker-gha-deployer-dev` via OIDC de GitHub Actions
-- Runtime execution role: `SAGEMAKER_EXECUTION_ROLE_ARN` o `get_execution_role()` en
-  entornos gestionados por SageMaker
+1. `uv` es el unico package manager Python del tutorial.
+2. La instalacion de dependencias se hace con `uv sync`.
+3. Toda ejecucion Python se hace con `uv run python`.
+4. Cada fase empieza cargando `.env.tutorial`.
+5. Ninguna fase requiere abrir archivos fuera de este folder de tutoriales o del workspace
+   que vas creando al seguirlos.
+
+## Variables compartidas
+
+Estas variables quedan fijadas en la fase 00 y se reutilizan despues:
+
+- `AWS_PROFILE`
+- `AWS_REGION`
+- `ACCOUNT_ID`
+- `TUTORIAL_ROOT`
+- `DATA_BUCKET`
+- `MODEL_PACKAGE_GROUP_NAME`
+- `SAGEMAKER_EXECUTION_ROLE_NAME`
+- `SAGEMAKER_EXECUTION_ROLE_ARN`
+- `SAGEMAKER_PIPELINE_ROLE_NAME`
+- `SAGEMAKER_PIPELINE_ROLE_ARN`
+- `GITHUB_ACTIONS_ROLE_NAME`
+- `GITHUB_ACTIONS_ROLE_ARN`
+- `PIPELINE_NAME`
+- `STAGING_ENDPOINT_NAME`
+- `PROD_ENDPOINT_NAME`
+- `ACCURACY_THRESHOLD`
+- `GITHUB_REPOSITORY`
+
+## Flujo end-to-end
+
+```mermaid
+flowchart TD
+  F0[00 Foundations\nuv + bootstrap AWS] --> D1[01 Data Ingestion\nDownload + split + S3]
+  D1 --> T2[02 Training + Validation\nModelTrainer + evaluation.json]
+  T2 --> P3[03 SageMaker Pipeline\nUpsert + execution + registry]
+  P3 --> S4[04 Serving\nModelPackage -> ModelBuilder -> invoke]
+  S4 --> C5[05 CI/CD\nWorkflow YAML + OIDC role]
+  S4 --> O6[06 Observability\nInspect executions + registry + endpoints]
+  S4 --> G7[07 Cost Governance\nInventory + cleanup]
+```
 
 ## Criterio global de finalizacion
-- Existe trazabilidad desde dataset local hasta `ModelPackageArn` y endpoint activo.
-- Las fases no dependen de patrones V2 ni de documentacion externa al SDK vendoreado.
-- La evidencia operativa se registra en `docs/iterations/`.
+
+- El dataset Titanic llega a S3 bajo `raw/` y `curated/`.
+- El baseline manual deja `evaluation.json` y `promotion_decision.json`.
+- El pipeline durable registra un modelo en `titanic-survival-xgboost`.
+- `staging` y `prod` se despliegan desde `ModelPackageArn`.
+- El workflow de GitHub Actions reproduce el mismo flujo usando `uv`.
+
+## Proximo paso
+
+Empieza por [`00-foundations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/00-foundations.md).

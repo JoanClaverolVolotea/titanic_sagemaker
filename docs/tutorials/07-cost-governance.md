@@ -1,146 +1,261 @@
 # 07 Cost and Governance
 
 ## Objetivo y contexto
-Definir controles de costo y gobierno que solo dependan de patrones visibles en la
-documentacion local del SageMaker SDK V3 y en los scripts del repositorio.
 
-Esta fase ya no prescribe budgets, schedulers o APIs de billing externas al alcance del SDK
-vendoreado. Se centra en los costos que el proyecto realmente controla desde su flujo
-SageMaker: training jobs, processing jobs, model registry y endpoints.
+Aplicar un patron simple de inventario y cleanup para los recursos que realmente genera este
+tutorial: training jobs, endpoints, pipeline executions, model packages y artefactos en S3.
 
 ## Resultado minimo esperado
-1. Los recursos runtime de SageMaker se mantienen pequenos por defecto.
-2. `staging` se elimina cuando ya no aporta evidencia.
-3. El proyecto puede listar recursos activos con el script local.
-4. La limpieza de recursos y artefactos queda documentada.
 
-## Fuentes locales alineadas con SDK V3
-1. `vendor/sagemaker-python-sdk/docs/quickstart.rst`
-2. `vendor/sagemaker-python-sdk/docs/inference/index.rst`
-3. `vendor/sagemaker-python-sdk/docs/training/index.rst`
-4. `vendor/sagemaker-python-sdk/docs/ml_ops/index.rst`
-5. `vendor/sagemaker-python-sdk/docs/sagemaker_core/index.rst`
-6. `vendor/sagemaker-python-sdk/migration.md`
+1. Inventario actual de recursos activos.
+2. Checklist de costo minimo aplicado.
+3. Cleanup manual reproducible para `staging`, `prod`, modelos, pipeline y objetos S3.
 
-## Archivos locales usados en esta fase
-- `scripts/check_tutorial_resources_active.sh`
-- `scripts/reset_tutorial_state.sh`
+## Prerequisitos concretos
+
+1. Fases 00-04 completadas.
+2. Bundle IAM disponible para esta fase:
+   - `DataScienceTutorialOperator` para inventario
+   - `DataScienceTutorialCleanup` para borrado
 
 ## Bootstrap auto-contenido
 
-Variables minimas para ejecutar esta fase desde cero:
+```bash
+cd "$HOME/titanic-sagemaker-tutorial"
+set -a
+source "$HOME/titanic-sagemaker-tutorial/.env.tutorial"
+set +a
+```
+
+## Paso a paso
+
+### 1. Inventario de recursos activos
 
 ```bash
-eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
+uv run python - <<'PY'
+import os
+
+import boto3
+
+session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+sm_client = session.client("sagemaker")
+
+print("[training-jobs]")
+for item in sm_client.list_training_jobs(
+    NameContains="titanic-",
+    SortBy="CreationTime",
+    SortOrder="Descending",
+    MaxResults=10,
+)["TrainingJobSummaries"]:
+    print(item["TrainingJobName"], item["TrainingJobStatus"])
+
+print("[pipelines]")
+for item in sm_client.list_pipelines(
+    PipelineNamePrefix="titanic-",
+    MaxResults=10,
+)["PipelineSummaries"]:
+    print(item["PipelineName"])
+
+print("[model-packages]")
+for item in sm_client.list_model_packages(
+    ModelPackageGroupName=os.environ["MODEL_PACKAGE_GROUP_NAME"],
+    SortBy="CreationTime",
+    SortOrder="Descending",
+    MaxResults=10,
+)["ModelPackageSummaryList"]:
+    print(item["ModelPackageArn"], item["ModelApprovalStatus"])
+
+print("[endpoints]")
+for endpoint_name in [os.environ["STAGING_ENDPOINT_NAME"], os.environ["PROD_ENDPOINT_NAME"]]:
+    try:
+        desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
+        print(endpoint_name, desc["EndpointStatus"])
+    except sm_client.exceptions.ClientError as exc:
+        print(endpoint_name, f"not_found={exc.response['Error']['Code']}")
+PY
 ```
 
-## Contrato minimo de costo
-
-### Defaults pequenos del roadmap
-| Recurso | Default del tutorial | Motivo |
-|---|---|---|
-| Processing | `ml.m5.large`, `instance_count=1` | Mantener costo y complejidad bajos |
-| Training | `ml.m5.large`, `instance_count=1` | Baseline suficiente para Titanic |
-| Hosting | `ml.m5.large`, `initial_instance_count=1` | Smoke y serving basico |
-| Approval | `PendingManualApproval` | Evitar deploys innecesarios |
-
-### Reglas del proyecto
-1. No mantener endpoints de experimentacion fuera de `staging` y `prod`.
-2. No crear endpoints antes de que exista `ModelPackageArn`.
-3. Borrar `staging` al terminar validaciones si no se necesita 24/7.
-4. Mantener el registro de recursos activos en cada iteracion.
-
-## Entregable 1 -- Revision de recursos activos
+### 2. Inventario rapido de artefactos S3
 
 ```bash
-AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase all
+aws s3 ls "s3://$DATA_BUCKET/raw/" --profile "$AWS_PROFILE"
+aws s3 ls "s3://$DATA_BUCKET/curated/" --profile "$AWS_PROFILE"
+aws s3 ls "s3://$DATA_BUCKET/training/" --recursive --summarize --profile "$AWS_PROFILE"
+aws s3 ls "s3://$DATA_BUCKET/evaluation/" --recursive --summarize --profile "$AWS_PROFILE"
+aws s3 ls "s3://$DATA_BUCKET/pipeline/" --recursive --summarize --profile "$AWS_PROFILE"
 ```
 
-Para una revision centrada en serving:
+### 3. Checklist minimo de costo
+
+1. Mantener `ml.m5.large` y `instance_count=1` salvo necesidad real.
+2. Borrar `staging` cuando ya no estes validando.
+3. No mantener paquetes no usados sin motivo.
+4. Evitar relanzar training o pipeline si la evidencia actual ya sirve.
+
+### 4. Borrar `staging`
 
 ```bash
-AWS_PROFILE=data-science-user scripts/check_tutorial_resources_active.sh --phase 04
+uv run python - <<'PY'
+import os
+
+import boto3
+
+session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+sm_client = session.client("sagemaker")
+
+endpoint_name = os.environ["STAGING_ENDPOINT_NAME"]
+config_name = None
+model_name = None
+
+try:
+    endpoint_desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
+    config_name = endpoint_desc["EndpointConfigName"]
+    config_desc = sm_client.describe_endpoint_config(EndpointConfigName=config_name)
+    model_name = config_desc["ProductionVariants"][0]["ModelName"]
+    sm_client.delete_endpoint(EndpointName=endpoint_name)
+    print(f"deleted_endpoint={endpoint_name}")
+except Exception as exc:
+    print(f"skip_endpoint={exc}")
+
+if config_name:
+    try:
+        sm_client.delete_endpoint_config(EndpointConfigName=config_name)
+        print(f"deleted_endpoint_config={config_name}")
+    except Exception as exc:
+        print(f"skip_endpoint_config={exc}")
+
+if model_name:
+    try:
+        sm_client.delete_model(ModelName=model_name)
+        print(f"deleted_model={model_name}")
+    except Exception as exc:
+        print(f"skip_model={exc}")
+PY
 ```
 
-## Entregable 2 -- Cleanup de endpoints no esenciales
-
-Patron alineado con el quickstart local: eliminar endpoints cuando terminan su utilidad.
-
-```python
-# Si conservas el objeto endpoint del deploy, puedes usar el patron del quickstart:
-# staging_endpoint.delete()
-```
-
-Si necesitas rehacer una fase completa:
+### 5. Borrar `prod`
 
 ```bash
-scripts/reset_tutorial_state.sh --target after-tutorial-2
-scripts/reset_tutorial_state.sh --target after-tutorial-2 --apply --confirm RESET
-scripts/reset_tutorial_state.sh --target all
-scripts/reset_tutorial_state.sh --target all --apply --confirm RESET
+uv run python - <<'PY'
+import os
+
+import boto3
+
+session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+sm_client = session.client("sagemaker")
+
+endpoint_name = os.environ["PROD_ENDPOINT_NAME"]
+config_name = None
+model_name = None
+
+try:
+    endpoint_desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
+    config_name = endpoint_desc["EndpointConfigName"]
+    config_desc = sm_client.describe_endpoint_config(EndpointConfigName=config_name)
+    model_name = config_desc["ProductionVariants"][0]["ModelName"]
+    sm_client.delete_endpoint(EndpointName=endpoint_name)
+    print(f"deleted_endpoint={endpoint_name}")
+except Exception as exc:
+    print(f"skip_endpoint={exc}")
+
+if config_name:
+    try:
+        sm_client.delete_endpoint_config(EndpointConfigName=config_name)
+        print(f"deleted_endpoint_config={config_name}")
+    except Exception as exc:
+        print(f"skip_endpoint_config={exc}")
+
+if model_name:
+    try:
+        sm_client.delete_model(ModelName=model_name)
+        print(f"deleted_model={model_name}")
+    except Exception as exc:
+        print(f"skip_model={exc}")
+PY
 ```
 
-## Entregable 3 -- Higiene de artefactos runtime
+### 6. Borrar el pipeline y los model packages
 
-Prefijos que deben revisarse periodicamente:
-- `s3://$DATA_BUCKET/training/xgboost/output/`
-- `s3://$DATA_BUCKET/evaluation/xgboost/`
-- `s3://$DATA_BUCKET/pipeline/runtime/$PIPELINE_NAME/`
+```bash
+uv run python - <<'PY'
+import os
 
-Checklist operativo minimo:
-1. Confirmar que el ultimo training job necesario ya termino.
-2. Confirmar que el ultimo pipeline execution necesario ya termino.
-3. Eliminar `staging` si no sigue en validacion activa.
-4. Registrar en `docs/iterations/` que recursos quedaron vivos y por que.
+import boto3
 
-## Entregable 4 -- Gobierno de despliegue
+session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+sm_client = session.client("sagemaker")
 
-Reglas de gobierno derivadas del flujo V3:
-- Solo desplegar desde `ModelPackageArn`.
-- Mantener `PendingManualApproval` hasta que exista evidencia de calidad.
-- El smoke test es obligatorio antes de tocar `prod`.
-- El rollback se hace redeployando un package aprobado anterior, no reutilizando artefactos
-  sueltos del training job.
+packages = sm_client.list_model_packages(
+    ModelPackageGroupName=os.environ["MODEL_PACKAGE_GROUP_NAME"],
+    SortBy="CreationTime",
+    SortOrder="Descending",
+    MaxResults=50,
+)["ModelPackageSummaryList"]
+for item in packages:
+    try:
+        sm_client.delete_model_package(ModelPackageName=item["ModelPackageArn"])
+        print(f"deleted_model_package={item['ModelPackageArn']}")
+    except Exception as exc:
+        print(f"skip_model_package={exc}")
 
-## Alcance explicitamente excluido de este tutorial
-Quedan fuera de alcance aqui porque no estan cubiertos por la documentacion local del SDK y
-el repo no aporta una implementacion canonica asociada:
-- budgets de billing,
-- cost explorer,
-- schedulers fuera del flujo SageMaker,
-- automatismos de apagado con otros servicios AWS.
+try:
+    sm_client.delete_pipeline(PipelineName=os.environ["PIPELINE_NAME"])
+    print(f"deleted_pipeline={os.environ['PIPELINE_NAME']}")
+except Exception as exc:
+    print(f"skip_pipeline={exc}")
 
-Si esas capacidades se agregan despues, deben documentarse como una capa adicional, no como
-parte del estandar minimo V3 de este roadmap.
+try:
+    sm_client.delete_model_package_group(ModelPackageGroupName=os.environ["MODEL_PACKAGE_GROUP_NAME"])
+    print(f"deleted_model_package_group={os.environ['MODEL_PACKAGE_GROUP_NAME']}")
+except Exception as exc:
+    print(f"skip_model_package_group={exc}")
+PY
+```
 
-## Decisiones tecnicas y alternativas descartadas
-- Se gobierna el costo a partir de recursos reales de SageMaker, no desde herramientas
-  externas al tutorial.
-- Se favorece cleanup explicito de endpoints sobre mantener capacidad encendida por defecto.
-- Se descarta promover a prod un modelo no registrado.
-- Se descarta usar endpoints manuales efimeros como sustituto permanente del registry.
+### 7. Limpiar artefactos S3 del tutorial
 
-## IAM usado (roles/policies/permisos clave)
-- Perfil operativo: `data-science-user`.
-- `DataScienceTutorialOperator` para `scripts/check_tutorial_resources_active.sh` y revisar
-  prefijos runtime del bucket del tutorial.
-- `DataScienceTutorialCleanup` para `scripts/reset_tutorial_state.sh`, training jobs,
-  endpoints, endpoint configs, models, pipelines y Model Registry en no-prod.
+```bash
+aws s3 rm "s3://$DATA_BUCKET/raw/" --recursive --profile "$AWS_PROFILE"
+aws s3 rm "s3://$DATA_BUCKET/curated/" --recursive --profile "$AWS_PROFILE"
+aws s3 rm "s3://$DATA_BUCKET/training/" --recursive --profile "$AWS_PROFILE"
+aws s3 rm "s3://$DATA_BUCKET/evaluation/" --recursive --profile "$AWS_PROFILE"
+aws s3 rm "s3://$DATA_BUCKET/pipeline/" --recursive --profile "$AWS_PROFILE"
+```
+
+## IAM usado
+
+- `DataScienceTutorialOperator` para inventario.
+- `DataScienceTutorialCleanup` para borrar recursos y objetos.
 
 ## Evidencia requerida
-1. Salida de `scripts/check_tutorial_resources_active.sh`.
-2. Inventario de endpoints activos.
-3. Nota de cleanup aplicado o justificacion de por que un recurso sigue vivo.
+
+1. Inventario antes del cleanup.
+2. Salida de los borrados ejecutados.
+3. Estado final del bucket y de los endpoints.
 
 ## Criterio de cierre
-- El proyecto puede explicar que recursos SageMaker generan costo.
-- Existe un patron claro para apagar `staging` y revisar artefactos runtime.
-- El despliegue a `prod` se mantiene gobernado por registry + smoke test.
+
+- Sabes que recursos siguen costando dinero.
+- Puedes borrar el footprint del tutorial sin recurrir a archivos externos.
 
 ## Riesgos/pendientes
-- Si `staging` se deja activo sin necesidad, el costo sube sin nueva evidencia.
-- Si no se revisan los prefijos runtime, se acumulan artefactos innecesarios.
-- Las capacidades de billing fuera de SageMaker siguen pendientes de documentacion separada.
+
+- Borrar `prod` sin confirmar el entorno correcto es destructivo.
+- Si eliminas el Model Package Group, la fase 03 necesitara bootstrap de nuevo antes de
+  registrar otro modelo.
 
 ## Proximo paso
-Registrar cada limpieza, promocion y excepcion de costo en `docs/iterations/`.
+
+Repetir el roadmap desde [`00-foundations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/00-foundations.md) cuando quieras reconstruir el entorno desde cero.

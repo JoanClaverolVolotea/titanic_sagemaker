@@ -2,293 +2,622 @@
 
 ## Objetivo y contexto
 
-Construir y publicar el flujo `DataPreProcessing -> TrainModel -> ModelEvaluation ->
-QualityGateAccuracy -> RegisterModel` sin depender de Terraform ni del bucket por defecto de
-SageMaker para staging implicito.
-
-Los examples V3 vendoreados siguen siendo la referencia conceptual para `PipelineSession`,
-`ProcessingStep`, `TrainingStep`, `ConditionStep`, `JsonGet` y `ModelStep`. En este repo, el
-camino canonico de publicacion pasa a ser:
-
-1. resolver el entorno desde `config/project-manifest.json`,
-2. asegurar bucket, roles y Model Package Group con `scripts/ensure_project_bootstrap.py`,
-3. publicar `pipeline/code/` al bucket del proyecto,
-4. ejecutar `scripts/upsert_pipeline.py`,
-5. iniciar y monitorear la ejecucion del pipeline.
+Construir y publicar un pipeline durable que procese datos, entrene, evalua `metrics.accuracy`
+y registre el modelo en `titanic-survival-xgboost` solo si supera el umbral.
 
 ## Resultado minimo esperado
 
-1. El bundle de codigo y los scripts quedan publicados en el bucket del proyecto.
-2. `scripts/upsert_pipeline.py` crea o actualiza la definicion del pipeline con
-   `pipeline.upsert(...)`.
-3. La ejecucion procesa datos desde `curated/`, evalua `metrics.accuracy` y registra el modelo
-   solo si el gate pasa.
-4. Queda evidencia de `PipelineExecutionArn`, estados por step y `ModelPackageArn`.
-
-## Fuentes locales alineadas con SDK V3
-
-1. `vendor/sagemaker-python-sdk/docs/overview.rst`
-2. `vendor/sagemaker-python-sdk/docs/quickstart.rst`
-3. `vendor/sagemaker-python-sdk/docs/ml_ops/index.rst`
-4. `vendor/sagemaker-python-sdk/docs/api/sagemaker_mlops.rst`
-5. `vendor/sagemaker-python-sdk/docs/training/index.rst`
-6. `vendor/sagemaker-python-sdk/docs/inference/index.rst`
-7. `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-pipeline-train-create-registry.ipynb`
-8. `vendor/sagemaker-python-sdk/v3-examples/ml-ops-examples/v3-model-registry-example/v3-model-registry-example.ipynb`
-9. `vendor/sagemaker-python-sdk/migration.md`
-
-## Archivos locales usados en esta fase
-
-- `config/project-manifest.json`
-- `pipeline/code/preprocess.py`
-- `pipeline/code/evaluate.py`
-- `scripts/resolve_project_env.py`
-- `scripts/ensure_project_bootstrap.py`
-- `scripts/publish_pipeline_code.sh`
-- `scripts/upsert_pipeline.py`
+1. Bundle de codigo publicado en S3.
+2. Definicion del pipeline creada o actualizada.
+3. Ejecucion iniciada y monitorizada.
+4. `ModelPackageArn` trazable en el registro.
 
 ## Prerequisitos concretos
 
 1. Fases 00, 01 y 02 completadas.
-2. Perfil AWS CLI `data-science-user` operativo.
-3. `sagemaker` 3.x instalado en el entorno donde ejecutas `scripts/upsert_pipeline.py`.
-4. Ejecutar desde la raiz del repositorio.
-
-## Contrato del pipeline durable
-
-### Parametros canonicos
-
-| Parametro | Tipo | Default recomendado | Proposito |
-|---|---|---|---|
-| `CodeBundleUri` | String | `s3://<bucket>/pipeline/code/<sha>/pipeline_code.tar.gz` | Trazabilidad e invalidacion de cache |
-| `InputTrainUri` | String | `s3://<bucket>/curated/train.csv` | Entrada de train |
-| `InputValidationUri` | String | `s3://<bucket>/curated/validation.csv` | Entrada de validation |
-| `AccuracyThreshold` | Float | `0.78` | Gate de calidad |
-
-### Contrato de evaluacion
-
-`pipeline/code/evaluate.py` debe emitir `evaluation.json` con:
-
-- `metrics.accuracy`
-- `metrics.precision`
-- `metrics.recall`
-- `metrics.f1`
-- `thresholds.passed`
+2. Bundle IAM disponible para esta fase: `DataScienceTutorialOperator`.
 
 ## Bootstrap auto-contenido
 
 ```bash
-eval "$(python3 scripts/resolve_project_env.py --emit-exports)"
-# Si necesitas revalidar recursos duraderos fuera de la fase 00:
-# python3 scripts/ensure_project_bootstrap.py --check
-export ACCURACY_THRESHOLD=${ACCURACY_THRESHOLD:-$QUALITY_THRESHOLD_ACCURACY}
+cd "$HOME/titanic-sagemaker-tutorial"
+set -a
+source "$HOME/titanic-sagemaker-tutorial/.env.tutorial"
+set +a
 ```
 
-## Paso a paso (ejecucion)
+## Paso a paso
 
-### 1. Verificar el codigo fuente del pipeline
+### 1. Crear el preprocess reutilizable
 
 ```bash
-ls -l \
-  pipeline/code/preprocess.py \
-  pipeline/code/evaluate.py \
-  pipeline/code/requirements.txt
+cat > "$TUTORIAL_ROOT/mlops_assets/preprocess.py" <<'EOF'
+#!/usr/bin/env python
+from __future__ import annotations
+
+import argparse
+import csv
+from pathlib import Path
+from statistics import median
+
+import boto3
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-train-uri", required=True)
+    parser.add_argument("--input-validation-uri", required=True)
+    parser.add_argument("--code-bundle-uri", default="")
+    return parser.parse_args()
+
+
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    if not uri.startswith("s3://"):
+        raise ValueError(f"S3 URI invalida: {uri}")
+    bucket, key = uri[5:].split("/", 1)
+    return bucket, key
+
+
+def download_csv(uri: str, target: Path) -> None:
+    bucket, key = parse_s3_uri(uri)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    boto3.client("s3").download_file(bucket, key, str(target))
+
+
+def read_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        raise ValueError(f"CSV vacio: {path}")
+    return rows
+
+
+def parse_float(value: str | None) -> float | None:
+    if value is None or not value.strip():
+        return None
+    return float(value)
+
+
+def to_int(value: str | None, default: int = 0) -> int:
+    if value is None or not value.strip():
+        return default
+    return int(float(value))
+
+
+def encode_features(row: dict[str, str], age_fill: float, fare_fill: float) -> list[float]:
+    sex_map = {"male": 0.0, "female": 1.0}
+    embarked_map = {"C": 0.0, "Q": 1.0, "S": 2.0}
+    age = parse_float(row.get("Age"))
+    fare = parse_float(row.get("Fare"))
+    return [
+        float(to_int(row.get("Pclass"), default=3)),
+        sex_map.get((row.get("Sex") or "").strip().lower(), -1.0),
+        age_fill if age is None else age,
+        float(to_int(row.get("SibSp"), default=0)),
+        float(to_int(row.get("Parch"), default=0)),
+        fare_fill if fare is None else fare,
+        embarked_map.get((row.get("Embarked") or "").strip().upper(), -1.0),
+    ]
+
+
+def write_csv(path: Path, rows: list[list[float | int]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerows(rows)
+
+
+def main() -> None:
+    args = parse_args()
+    work_dir = Path("/tmp/titanic_preprocess")
+    train_input = work_dir / "train.csv"
+    validation_input = work_dir / "validation.csv"
+    download_csv(args.input_train_uri, train_input)
+    download_csv(args.input_validation_uri, validation_input)
+
+    train_rows = read_rows(train_input)
+    validation_rows = read_rows(validation_input)
+    ages = [v for v in (parse_float(r.get("Age")) for r in train_rows) if v is not None]
+    fares = [v for v in (parse_float(r.get("Fare")) for r in train_rows) if v is not None]
+    age_fill = float(median(ages)) if ages else 0.0
+    fare_fill = float(median(fares)) if fares else 0.0
+
+    train_payload = [[to_int(r["Survived"]), *encode_features(r, age_fill, fare_fill)] for r in train_rows]
+    validation_payload = [
+        [to_int(r["Survived"]), *encode_features(r, age_fill, fare_fill)] for r in validation_rows
+    ]
+
+    write_csv(Path("/opt/ml/processing/output/train/train_xgb.csv"), train_payload)
+    write_csv(Path("/opt/ml/processing/output/validation/validation_xgb.csv"), validation_payload)
+    print(f"prepared train={len(train_payload)} validation={len(validation_payload)}")
+
+
+if __name__ == "__main__":
+    main()
+EOF
+chmod +x "$TUTORIAL_ROOT/mlops_assets/preprocess.py"
 ```
 
-### 2. Publicar scripts y bundle en el bucket del proyecto
+### 2. Crear `requirements.txt` del bundle
 
 ```bash
-eval "$(
-  AWS_PROFILE="$AWS_PROFILE" \
-  AWS_REGION="$AWS_REGION" \
-  scripts/publish_pipeline_code.sh --bucket "$DATA_BUCKET" --emit-exports
-)"
-
-echo "CODE_VERSION=$CODE_VERSION"
-echo "CODE_BUNDLE_URI=$CODE_BUNDLE_URI"
-echo "PREPROCESS_SCRIPT_S3_URI=$PREPROCESS_SCRIPT_S3_URI"
-echo "EVALUATE_SCRIPT_S3_URI=$EVALUATE_SCRIPT_S3_URI"
+cat > "$TUTORIAL_ROOT/mlops_assets/requirements.txt" <<'EOF'
+xgboost==2.1.4
+EOF
 ```
 
-Validar objetos publicados:
+### 3. Crear el publicador del pipeline
 
 ```bash
-aws s3 ls "$CODE_BUNDLE_URI" --profile "$AWS_PROFILE"
-aws s3 ls "$PREPROCESS_SCRIPT_S3_URI" --profile "$AWS_PROFILE"
-aws s3 ls "$EVALUATE_SCRIPT_S3_URI" --profile "$AWS_PROFILE"
-```
+cat > "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" <<'EOF'
+#!/usr/bin/env python
+from __future__ import annotations
 
-### 3. Compilar y publicar la definicion del pipeline con SDK V3
-
-```bash
-python3 scripts/upsert_pipeline.py \
-  --code-bundle-uri "$CODE_BUNDLE_URI" \
-  --definition-only > /tmp/titanic-pipeline-definition.json
-
-python3 scripts/upsert_pipeline.py \
-  --code-bundle-uri "$CODE_BUNDLE_URI"
-```
-
-La publicacion ya no depende de `terraform apply`. La fuente de verdad pasa a ser el script
-versionado `scripts/upsert_pipeline.py`, que construye el pipeline con clases V3 y lo
-publica con `pipeline.upsert(role_arn=...)`.
-
-### 4. Confirmar el contrato resuelto para el run
-
-```bash
-echo "PIPELINE_NAME=$PIPELINE_NAME"
-echo "SAGEMAKER_PIPELINE_ROLE_ARN=$SAGEMAKER_PIPELINE_ROLE_ARN"
-echo "MODEL_PACKAGE_GROUP_NAME=$MODEL_PACKAGE_GROUP_NAME"
-```
-
-### 5. Mapa entre la definicion durable y los patrones V3 del SDK
-
-| Definicion del repo | Equivalente conceptual V3 |
-|---|---|
-| `DataPreProcessing` | `ScriptProcessor.run(...)` + `ProcessingStep` |
-| `TrainModel` | `ModelTrainer.train()` + `TrainingStep` |
-| `ModelEvaluation` | `ScriptProcessor.run(...)` + `ProcessingStep` + `PropertyFile` |
-| `QualityGateAccuracy` | `ConditionStep` + `JsonGet(..., "metrics.accuracy")` |
-| `RegisterModel-RegisterModel` | `ModelBuilder.register(...)` + `ModelStep` |
-| `CodeBundleUri` | versionado del bundle + invalidacion de cache entre publicaciones |
-
-## 6. Iniciar una ejecucion con los parametros del run
-
-```python
+import argparse
 import json
 import os
 
 import boto3
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--code-bundle-uri", required=True)
+    parser.add_argument("--preprocess-script-uri", required=True)
+    parser.add_argument("--evaluate-script-uri", required=True)
+    parser.add_argument("--input-train-uri")
+    parser.add_argument("--input-validation-uri")
+    parser.add_argument("--accuracy-threshold", type=float)
+    parser.add_argument("--definition-only", action="store_true")
+    return parser.parse_args()
+
+
+def env(name: str) -> str:
+    value = os.environ.get(name, "")
+    if not value:
+        raise SystemExit(f"Falta la variable {name}")
+    return value
+
+
+def build_pipeline(args: argparse.Namespace):
+    from sagemaker.core import image_uris, shapes
+    from sagemaker.core.helper.session_helper import Session
+    from sagemaker.core.model_metrics import MetricsSource, ModelMetrics
+    from sagemaker.core.processing import ScriptProcessor
+    from sagemaker.core.shapes import (
+        ProcessingInput,
+        ProcessingOutput,
+        ProcessingS3Input,
+        ProcessingS3Output,
+    )
+    from sagemaker.core.workflow import (
+        ConditionGreaterThanOrEqualTo,
+        Join,
+        JsonGet,
+        ParameterFloat,
+        ParameterString,
+        PropertyFile,
+    )
+    from sagemaker.core.workflow.pipeline_context import PipelineSession
+    from sagemaker.mlops.workflow.condition_step import ConditionStep
+    from sagemaker.mlops.workflow.model_step import ModelStep
+    from sagemaker.mlops.workflow.pipeline import Pipeline
+    from sagemaker.mlops.workflow.steps import CacheConfig, ProcessingStep, TrainingStep
+    from sagemaker.serve.model_builder import ModelBuilder
+    from sagemaker.train import ModelTrainer
+    from sagemaker.train.configs import Compute, InputData
+
+    boto_session = boto3.Session(
+        profile_name=env("AWS_PROFILE"),
+        region_name=env("AWS_REGION"),
+    )
+    pipeline_session = PipelineSession(
+        boto_session=boto_session,
+        default_bucket=env("DATA_BUCKET"),
+        default_bucket_prefix="pipeline/definitions",
+    )
+    _ = Session(boto_session=boto_session, default_bucket=env("DATA_BUCKET"))
+
+    input_train_uri_default = args.input_train_uri or f"s3://{env('DATA_BUCKET')}/curated/train.csv"
+    input_validation_uri_default = (
+        args.input_validation_uri or f"s3://{env('DATA_BUCKET')}/curated/validation.csv"
+    )
+    accuracy_default = (
+        args.accuracy_threshold
+        if args.accuracy_threshold is not None
+        else float(env("ACCURACY_THRESHOLD"))
+    )
+
+    code_bundle_uri = ParameterString(name="CodeBundleUri", default_value=args.code_bundle_uri)
+    input_train_uri = ParameterString(name="InputTrainUri", default_value=input_train_uri_default)
+    input_validation_uri = ParameterString(
+        name="InputValidationUri",
+        default_value=input_validation_uri_default,
+    )
+    accuracy_threshold = ParameterFloat(name="AccuracyThreshold", default_value=accuracy_default)
+
+    runtime_root = f"s3://{env('DATA_BUCKET')}/pipeline/runtime/{env('PIPELINE_NAME')}"
+    cache_config = CacheConfig(enable_caching=True, expire_after="P30D")
+
+    preprocess_processor = ScriptProcessor(
+        role=env("SAGEMAKER_PIPELINE_ROLE_ARN"),
+        image_uri=image_uris.retrieve(
+            framework="xgboost",
+            region=env("AWS_REGION"),
+            version="1.7-1",
+            py_version="py3",
+            instance_type="ml.m5.large",
+        ),
+        command=["python3"],
+        instance_count=1,
+        instance_type="ml.m5.large",
+        volume_size_in_gb=30,
+        base_job_name=f"{env('PIPELINE_NAME')}-preprocess",
+        sagemaker_session=pipeline_session,
+    )
+    preprocess_args = preprocess_processor.run(
+        code=args.preprocess_script_uri,
+        outputs=[
+            ProcessingOutput(
+                output_name="train",
+                s3_output=ProcessingS3Output(
+                    s3_uri=f"{runtime_root}/preprocess/train",
+                    local_path="/opt/ml/processing/output/train",
+                    s3_upload_mode="EndOfJob",
+                ),
+            ),
+            ProcessingOutput(
+                output_name="validation",
+                s3_output=ProcessingS3Output(
+                    s3_uri=f"{runtime_root}/preprocess/validation",
+                    local_path="/opt/ml/processing/output/validation",
+                    s3_upload_mode="EndOfJob",
+                ),
+            ),
+        ],
+        arguments=[
+            "--input-train-uri",
+            input_train_uri,
+            "--input-validation-uri",
+            input_validation_uri,
+            "--code-bundle-uri",
+            code_bundle_uri,
+        ],
+    )
+    step_preprocess = ProcessingStep(
+        name="DataPreProcessing",
+        step_args=preprocess_args,
+        cache_config=cache_config,
+    )
+
+    trainer = ModelTrainer(
+        training_image=image_uris.retrieve(
+            framework="xgboost",
+            region=env("AWS_REGION"),
+            version="1.7-1",
+            py_version="py3",
+            instance_type="ml.m5.large",
+        ),
+        compute=Compute(instance_type="ml.m5.large", instance_count=1, volume_size_in_gb=30),
+        base_job_name=f"{env('PIPELINE_NAME')}-train",
+        sagemaker_session=pipeline_session,
+        role=env("SAGEMAKER_PIPELINE_ROLE_ARN"),
+        output_data_config=shapes.OutputDataConfig(s3_output_path=f"{runtime_root}/training"),
+        hyperparameters={
+            "objective": "binary:logistic",
+            "num_round": 200,
+            "max_depth": 5,
+            "eta": 0.2,
+            "subsample": 0.8,
+            "eval_metric": "logloss",
+        },
+        input_data_config=[
+            InputData(
+                channel_name="train",
+                data_source=step_preprocess.properties.ProcessingOutputConfig.Outputs["train"].S3Output.S3Uri,
+                content_type="text/csv",
+            ),
+            InputData(
+                channel_name="validation",
+                data_source=step_preprocess.properties.ProcessingOutputConfig.Outputs["validation"].S3Output.S3Uri,
+                content_type="text/csv",
+            ),
+        ],
+    )
+    step_train = TrainingStep(name="TrainModel", step_args=trainer.train(), cache_config=cache_config)
+
+    evaluation_report = PropertyFile(
+        name="EvaluationReport",
+        output_name="evaluation",
+        path="evaluation.json",
+    )
+    evaluation_processor = ScriptProcessor(
+        role=env("SAGEMAKER_PIPELINE_ROLE_ARN"),
+        image_uri=image_uris.retrieve(
+            framework="xgboost",
+            region=env("AWS_REGION"),
+            version="1.7-1",
+            py_version="py3",
+            instance_type="ml.m5.large",
+        ),
+        command=["python3"],
+        instance_count=1,
+        instance_type="ml.m5.large",
+        volume_size_in_gb=30,
+        base_job_name=f"{env('PIPELINE_NAME')}-evaluate",
+        sagemaker_session=pipeline_session,
+    )
+    evaluation_args = evaluation_processor.run(
+        code=args.evaluate_script_uri,
+        inputs=[
+            ProcessingInput(
+                input_name="model",
+                s3_input=ProcessingS3Input(
+                    s3_uri=step_train.properties.ModelArtifacts.S3ModelArtifacts,
+                    local_path="/opt/ml/processing/model",
+                    s3_data_type="S3Prefix",
+                    s3_input_mode="File",
+                    s3_data_distribution_type="FullyReplicated",
+                ),
+            ),
+            ProcessingInput(
+                input_name="validation",
+                s3_input=ProcessingS3Input(
+                    s3_uri=step_preprocess.properties.ProcessingOutputConfig.Outputs["validation"].S3Output.S3Uri,
+                    local_path="/opt/ml/processing/validation",
+                    s3_data_type="S3Prefix",
+                    s3_input_mode="File",
+                    s3_data_distribution_type="FullyReplicated",
+                ),
+            ),
+        ],
+        outputs=[
+            ProcessingOutput(
+                output_name="evaluation",
+                s3_output=ProcessingS3Output(
+                    s3_uri=f"{runtime_root}/evaluation",
+                    local_path="/opt/ml/processing/evaluation",
+                    s3_upload_mode="EndOfJob",
+                ),
+            )
+        ],
+        arguments=[
+            "--model-artifact",
+            "/opt/ml/processing/model/model.tar.gz",
+            "--validation",
+            "/opt/ml/processing/validation/validation_xgb.csv",
+            "--accuracy-threshold",
+            accuracy_threshold,
+            "--output",
+            "/opt/ml/processing/evaluation/evaluation.json",
+        ],
+    )
+    step_evaluation = ProcessingStep(
+        name="ModelEvaluation",
+        step_args=evaluation_args,
+        property_files=[evaluation_report],
+        cache_config=cache_config,
+    )
+
+    evaluation_report_uri = Join(
+        on="/",
+        values=[
+            step_evaluation.properties.ProcessingOutputConfig.Outputs["evaluation"].S3Output.S3Uri,
+            "evaluation.json",
+        ],
+    )
+    model_builder = ModelBuilder(
+        s3_model_data_url=step_train.properties.ModelArtifacts.S3ModelArtifacts,
+        image_uri=image_uris.retrieve(
+            framework="xgboost",
+            region=env("AWS_REGION"),
+            version="1.7-1",
+            py_version="py3",
+            instance_type="ml.m5.large",
+        ),
+        sagemaker_session=pipeline_session,
+        role_arn=env("SAGEMAKER_PIPELINE_ROLE_ARN"),
+    )
+    register_step = ModelStep(
+        name="RegisterModel-RegisterModel",
+        step_args=model_builder.register(
+            model_package_group_name=env("MODEL_PACKAGE_GROUP_NAME"),
+            content_types=["text/csv"],
+            response_types=["text/csv"],
+            inference_instances=["ml.m5.large"],
+            transform_instances=["ml.m5.large"],
+            model_metrics=ModelMetrics(
+                model_statistics=MetricsSource(
+                    content_type="application/json",
+                    s3_uri=evaluation_report_uri,
+                )
+            ),
+            approval_status="PendingManualApproval",
+            skip_model_validation="None",
+        ),
+    )
+    quality_gate = ConditionStep(
+        name="QualityGateAccuracy",
+        conditions=[
+            ConditionGreaterThanOrEqualTo(
+                left=JsonGet(
+                    step_name=step_evaluation.name,
+                    property_file=evaluation_report,
+                    json_path="metrics.accuracy",
+                ),
+                right=accuracy_threshold,
+            )
+        ],
+        if_steps=[register_step],
+        else_steps=[],
+    )
+
+    pipeline = Pipeline(
+        name=env("PIPELINE_NAME"),
+        parameters=[code_bundle_uri, input_train_uri, input_validation_uri, accuracy_threshold],
+        steps=[step_preprocess, step_train, step_evaluation, quality_gate],
+        sagemaker_session=pipeline_session,
+    )
+    return pipeline
+
+
+def main() -> None:
+    args = parse_args()
+    pipeline = build_pipeline(args)
+    if args.definition_only:
+        print(pipeline.definition())
+        return
+    response = pipeline.upsert(role_arn=env("SAGEMAKER_PIPELINE_ROLE_ARN"))
+    print(json.dumps(response, indent=2, default=str))
+
+
+if __name__ == "__main__":
+    main()
+EOF
+chmod +x "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py"
+```
+
+### 4. Versionar y publicar el bundle de codigo
+
+```bash
+export CODE_VERSION=$(date +%Y%m%d%H%M%S)
+export CODE_PREFIX="pipeline/source/$CODE_VERSION"
+export CODE_BUNDLE_URI="s3://$DATA_BUCKET/$CODE_PREFIX/pipeline_code.tar.gz"
+export PREPROCESS_SCRIPT_S3_URI="s3://$DATA_BUCKET/$CODE_PREFIX/source/preprocess.py"
+export EVALUATE_SCRIPT_S3_URI="s3://$DATA_BUCKET/$CODE_PREFIX/source/evaluate.py"
+
+tar -czf "$TUTORIAL_ROOT/artifacts/pipeline_code.tar.gz" \
+  -C "$TUTORIAL_ROOT/mlops_assets" \
+  preprocess.py \
+  evaluate.py \
+  requirements.txt
+
+aws s3 cp "$TUTORIAL_ROOT/artifacts/pipeline_code.tar.gz" "$CODE_BUNDLE_URI" --profile "$AWS_PROFILE"
+aws s3 cp "$TUTORIAL_ROOT/mlops_assets/preprocess.py" "$PREPROCESS_SCRIPT_S3_URI" --profile "$AWS_PROFILE"
+aws s3 cp "$TUTORIAL_ROOT/mlops_assets/evaluate.py" "$EVALUATE_SCRIPT_S3_URI" --profile "$AWS_PROFILE"
+```
+
+### 5. Compilar la definicion
+
+```bash
+uv run python "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" \
+  --code-bundle-uri "$CODE_BUNDLE_URI" \
+  --preprocess-script-uri "$PREPROCESS_SCRIPT_S3_URI" \
+  --evaluate-script-uri "$EVALUATE_SCRIPT_S3_URI" \
+  --definition-only > "$TUTORIAL_ROOT/artifacts/titanic-pipeline-definition.json"
+```
+
+### 6. Publicar el pipeline
+
+```bash
+uv run python "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" \
+  --code-bundle-uri "$CODE_BUNDLE_URI" \
+  --preprocess-script-uri "$PREPROCESS_SCRIPT_S3_URI" \
+  --evaluate-script-uri "$EVALUATE_SCRIPT_S3_URI"
+```
+
+### 7. Iniciar una ejecucion
+
+```bash
+uv run python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+import boto3
+
 session = boto3.Session(
-    profile_name=os.getenv("AWS_PROFILE", "data-science-user"),
-    region_name=os.getenv("AWS_REGION", "eu-west-1"),
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
 )
 sm_client = session.client("sagemaker")
-
 response = sm_client.start_pipeline_execution(
     PipelineName=os.environ["PIPELINE_NAME"],
     PipelineParameters=[
         {"Name": "CodeBundleUri", "Value": os.environ["CODE_BUNDLE_URI"]},
         {"Name": "InputTrainUri", "Value": f"s3://{os.environ['DATA_BUCKET']}/curated/train.csv"},
         {"Name": "InputValidationUri", "Value": f"s3://{os.environ['DATA_BUCKET']}/curated/validation.csv"},
-        {"Name": "AccuracyThreshold", "Value": os.getenv("ACCURACY_THRESHOLD", "0.78")},
+        {"Name": "AccuracyThreshold", "Value": os.environ["ACCURACY_THRESHOLD"]},
     ],
 )
-
-PIPELINE_EXECUTION_ARN = response["PipelineExecutionArn"]
+target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "pipeline_execution_arn.txt"
+target.write_text(response["PipelineExecutionArn"] + "\n", encoding="utf-8")
 print(json.dumps(response, indent=2))
+PY
 ```
 
-### 7. Monitorear steps y verificar registro
+### 8. Monitorizar el run y localizar el ultimo package
 
-```python
+```bash
+uv run python - <<'PY'
 import os
 import time
+from pathlib import Path
 
 import boto3
 
 session = boto3.Session(
-    profile_name=os.getenv("AWS_PROFILE", "data-science-user"),
-    region_name=os.getenv("AWS_REGION", "eu-west-1"),
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
 )
 sm_client = session.client("sagemaker")
-pipeline_execution_arn = os.environ["PIPELINE_EXECUTION_ARN"]
-model_package_group_name = os.environ["MODEL_PACKAGE_GROUP_NAME"]
+execution_arn = (Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "pipeline_execution_arn.txt").read_text(
+    encoding="utf-8"
+).strip()
 
-terminal_statuses = {"Succeeded", "Failed", "Stopped"}
-
+terminal = {"Succeeded", "Failed", "Stopped"}
 while True:
-    desc = sm_client.describe_pipeline_execution(PipelineExecutionArn=pipeline_execution_arn)
+    desc = sm_client.describe_pipeline_execution(PipelineExecutionArn=execution_arn)
     status = desc["PipelineExecutionStatus"]
-    print(f"Pipeline status: {status}")
-
-    steps_resp = sm_client.list_pipeline_execution_steps(
-        PipelineExecutionArn=pipeline_execution_arn,
+    print(f"pipeline_status={status}")
+    steps = sm_client.list_pipeline_execution_steps(
+        PipelineExecutionArn=execution_arn,
         SortOrder="Ascending",
-    )
-    for item in steps_resp.get("PipelineExecutionSteps", []):
-        print(f"  {item.get('StepName')} -> {item.get('StepStatus')}")
-
-    if status in terminal_statuses:
+    )["PipelineExecutionSteps"]
+    for step in steps:
+        print(f"  {step['StepName']} -> {step['StepStatus']}")
+    if status in terminal:
         break
     time.sleep(30)
 
-assert status == "Succeeded", f"Pipeline finalizo en {status}"
-
 packages = sm_client.list_model_packages(
-    ModelPackageGroupName=model_package_group_name,
+    ModelPackageGroupName=os.environ["MODEL_PACKAGE_GROUP_NAME"],
     SortBy="CreationTime",
     SortOrder="Descending",
-    MaxResults=5,
+    MaxResults=1,
 )["ModelPackageSummaryList"]
 
 if packages:
-    print(f"Latest ModelPackageArn: {packages[0]['ModelPackageArn']}")
+    latest = packages[0]["ModelPackageArn"]
+    target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "latest_model_package_arn.txt"
+    target.write_text(latest + "\n", encoding="utf-8")
+    print(f"latest_model_package_arn={latest}")
+PY
 ```
 
-### 8. Verificar el artefacto de evaluacion publicado
+## IAM usado
 
-```bash
-aws s3 ls "s3://$DATA_BUCKET/$PIPELINE_RUNTIME_S3_PREFIX/evaluation/" --profile "$AWS_PROFILE"
-```
-
-### 9. Regla de republicacion cuando cambia `pipeline/code/`
-
-Cada cambio en `pipeline/code/` debe repetir estos dos pasos:
-
-1. volver a ejecutar `scripts/publish_pipeline_code.sh` para obtener un `CODE_BUNDLE_URI` nuevo
-2. volver a ejecutar `scripts/upsert_pipeline.py --code-bundle-uri "$CODE_BUNDLE_URI"`
-
-## Decisiones tecnicas y alternativas descartadas
-
-- La publicacion canonica de esta fase es `project-bucket -> SDK V3 upsert`, no Terraform.
-- Se mantiene el mapeo conceptual a clases V3 porque los examples vendoreados siguen siendo la
-  referencia de diseno.
-- Se conserva `CodeBundleUri` como senal trazable de publicacion e invalidacion de cache.
-- Se descarta depender de `Session().default_bucket()` para staging de `preprocess.py` y
-  `evaluate.py`.
-- `evaluation.json` sigue siendo el contrato compartido entre fase 02 y fase 03.
-
-## IAM usado (roles/policies/permisos clave)
-
-- Perfil operativo: `data-science-user`.
-- Managed policy del operador para esta fase: `DataScienceTutorialOperator`.
-- Si revalidas o reconverges bucket/roles/registry con `scripts/ensure_project_bootstrap.py`,
-  añade `DataScienceTutorialBootstrap`.
-- Role runtime del pipeline: `SAGEMAKER_PIPELINE_ROLE_ARN`.
-- `scripts/ensure_project_bootstrap.py` crea o actualiza el role de pipeline y el
-  `Model Package Group` sin Terraform.
-- El camino canonico de esta fase ya no requiere permisos adicionales sobre el default bucket
-  de SageMaker.
+- `DataScienceTutorialOperator` para publicar codigo, crear el pipeline e iniciar runs.
 
 ## Evidencia requerida
 
-1. `CODE_BUNDLE_URI` publicado.
-2. JSON compilado del pipeline en `/tmp/titanic-pipeline-definition.json`.
-3. Salida de `scripts/upsert_pipeline.py`.
-4. `PipelineExecutionArn`.
-5. Estado por step.
-6. `ModelPackageArn` mas reciente del grupo.
-7. `evaluation.json` publicado por el step de evaluacion.
+1. `CODE_BUNDLE_URI`
+2. `titanic-pipeline-definition.json`
+3. `pipeline_execution_arn.txt`
+4. `latest_model_package_arn.txt`
 
 ## Criterio de cierre
 
-- El bundle de codigo y los scripts quedan versionados en el bucket del proyecto.
-- La definicion durable del pipeline queda publicada por `scripts/upsert_pipeline.py`.
-- El gate usa `metrics.accuracy` desde `evaluation.json`.
-- El modelo solo se registra si la condicion pasa.
-- La ejecucion deja un `ModelPackageArn` trazable.
+- Pipeline publicado.
+- Run ejecutado.
+- Gate de calidad evaluado.
+- `ModelPackageArn` disponible para serving.
 
 ## Riesgos/pendientes
 
-- Si cambias `pipeline/code/` sin rotar `CodeBundleUri`, puedes mantener cache o trazabilidad
-  inconsistentes.
-- Si ejecutas `scripts/upsert_pipeline.py` sin `sagemaker` 3.x instalado, la fase no es
-  ejecutable.
-- Si existe otra definicion del pipeline fuera del script versionado, aparecera drift
-  operativo.
+- Si no rotas `CODE_VERSION`, puedes perder trazabilidad del bundle.
+- Si el pipeline falla antes del gate, no habra `ModelPackageArn` nuevo.
 
 ## Proximo paso
 
-Consumir el `ModelPackageArn` registrado en `docs/tutorials/04-serving-sagemaker.md`.
+Continuar con [`04-serving-sagemaker.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/04-serving-sagemaker.md).
