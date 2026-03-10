@@ -112,17 +112,19 @@ chmod +x "$TUTORIAL_ROOT/mlops_assets/prepare_splits.py"
 
 ```bash
 uv run python - <<'PY'
+import os
 from pathlib import Path
 
 import pandas as pd
 
 url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
-target = Path.home() / "titanic-sagemaker-tutorial" / "data" / "raw" / "titanic.csv"
+target = Path(os.environ["TUTORIAL_ROOT"]) / "data" / "raw" / "titanic.csv"
 target.parent.mkdir(parents=True, exist_ok=True)
 df = pd.read_csv(url)
 df.to_csv(target, index=False)
 print(f"downloaded_rows={len(df)} target={target}")
 PY
+
 ```
 
 ### 3. Generar train y validation
@@ -158,6 +160,10 @@ aws s3 cp "$TUTORIAL_ROOT/data/splits/validation.csv" \
 ### 5. Verificar acceso programatico
 
 ```bash
+set -a
+source "$TUTORIAL_ROOT/.env.tutorial"
+set +a
+
 uv run python - <<'PY'
 import os
 
@@ -183,6 +189,10 @@ PY
 ### 6. Confirmar las rutas del tutorial
 
 ```bash
+set -a
+source "$TUTORIAL_ROOT/.env.tutorial"
+set +a
+
 aws s3 ls "s3://$DATA_BUCKET/raw/" --profile "$AWS_PROFILE"
 aws s3 ls "s3://$DATA_BUCKET/curated/" --profile "$AWS_PROFILE"
 ```
@@ -201,7 +211,8 @@ Rutas canonicas:
 
 1. Salida de la descarga.
 2. Salida de `wc -l`.
-3. Salida de `aws s3 ls` en `raw/` y `curated/`.
+3. Salida del bloque de verificacion programatica.
+4. Salida de `aws s3 ls` en `raw/` y `curated/`.
 
 ## Criterio de cierre
 
@@ -216,4 +227,4 @@ Rutas canonicas:
 
 ## Proximo paso
 
-Continuar con [`02-training-validation.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/02-training-validation.md).
+Continuar con [`02-training-validation.md`](./02-training-validation.md).
