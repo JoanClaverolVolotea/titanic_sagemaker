@@ -44,7 +44,7 @@ cat > "$TUTORIAL_ROOT/pyproject.toml" <<'EOF'
 [project]
 name = "titanic-sagemaker-tutorial"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 dependencies = [
   "boto3>=1.37,<2",
   "pandas>=2.2,<3",
@@ -54,6 +54,8 @@ dependencies = [
 ]
 EOF
 
+cd "$TUTORIAL_ROOT"
+uv python pin 3.11
 uv sync
 ```
 
@@ -423,7 +425,18 @@ def ensure_role(iam_client, role_name: str, policy_name: str, policy_document: s
         iam_client.tag_role(RoleName=role_name, Tags=tags("tutorial-bootstrap", usage))
 
     iam_client.get_role(RoleName=role_name)
-    iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+    try:
+        iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "NoSuchEntity":
+            raise
+        if mode == "check":
+            raise SystemExit(f"Falta inline policy: {policy_name} en role {role_name}") from exc
+        iam_client.put_role_policy(
+            RoleName=role_name,
+            PolicyName=policy_name,
+            PolicyDocument=policy_document,
+        )
 
 
 def ensure_model_package_group(sm_client, mode: str) -> None:
@@ -484,17 +497,24 @@ set -a
 source "$TUTORIAL_ROOT/.env.tutorial"
 set +a
 
-uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --check
-# Si falta algun recurso:
-# uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --apply
+if ! uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --check; then
+  uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --apply
+  uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --check
+fi
 ```
 
 ### 5. Verificar imports V3 y sesion base
 
 ```bash
+set -a
+source "$TUTORIAL_ROOT/.env.tutorial"
+set +a
+
 uv run python - <<'PY'
+import os
 from importlib.metadata import version
 
+import boto3
 from sagemaker.core.helper.session_helper import Session, get_execution_role
 from sagemaker.mlops.workflow.pipeline import Pipeline
 from sagemaker.serve.model_builder import ModelBuilder
@@ -502,17 +522,28 @@ from sagemaker.train import ModelTrainer
 
 sm_version = version("sagemaker")
 assert sm_version.split(".")[0] == "3", sm_version
-session = Session()
+
+boto_session = boto3.Session(
+    profile_name=os.environ["AWS_PROFILE"],
+    region_name=os.environ["AWS_REGION"],
+)
+session = Session(boto_session=boto_session)
+
 print(f"sagemaker={sm_version}")
 print(f"region={session.boto_region_name}")
+print(f"tutorial_bucket={os.environ['DATA_BUCKET']}")
+
 try:
-    print(f"default_bucket={session.default_bucket()}")
+    boto_session.client("s3").head_bucket(Bucket=os.environ["DATA_BUCKET"])
+    print(f"tutorial_bucket_exists={os.environ['DATA_BUCKET']}")
 except Exception as exc:
-    print(f"default_bucket_unavailable={exc}")
+    print(f"tutorial_bucket_unavailable={exc}")
+
 try:
     print(f"execution_role={get_execution_role()}")
 except Exception:
-    print("execution_role=use .env.tutorial outside managed runtimes")
+    print(f"execution_role={os.environ['SAGEMAKER_EXECUTION_ROLE_ARN']} (from .env.tutorial)")
+
 print("imports_ok=Session ModelTrainer ModelBuilder Pipeline")
 PY
 ```
