@@ -30,8 +30,11 @@ set +a
 
 ### 1. Crear el preprocess reutilizable
 
-```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/preprocess.py" <<'EOF'
+Este script corre dentro del contenedor SageMaker Processing. Descarga los CSVs con cabeceras
+desde S3, aplica feature engineering y escribe CSVs numericos headerless en las rutas de salida
+del contenedor. Guarda el siguiente contenido como `$TUTORIAL_ROOT/mlops_assets/preprocess.py`:
+
+```python
 #!/usr/bin/env python
 from __future__ import annotations
 
@@ -134,7 +137,14 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
+```
+
+Escribe el archivo y marca como ejecutable:
+
+```bash
+cat > "$TUTORIAL_ROOT/mlops_assets/preprocess.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
 chmod +x "$TUTORIAL_ROOT/mlops_assets/preprocess.py"
 ```
 
@@ -148,8 +158,10 @@ EOF
 
 ### 3. Crear el publicador del pipeline
 
-```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" <<'EOF'
+Este script construye la definicion del pipeline con SageMaker V3 y la publica con `upsert`.
+Guarda el siguiente contenido como `$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py`:
+
+```python
 #!/usr/bin/env python
 from __future__ import annotations
 
@@ -181,7 +193,6 @@ def env(name: str) -> str:
 
 def build_pipeline(args: argparse.Namespace):
     from sagemaker.core import image_uris, shapes
-    from sagemaker.core.helper.session_helper import Session
     from sagemaker.core.model_metrics import MetricsSource, ModelMetrics
     from sagemaker.core.processing import ScriptProcessor
     from sagemaker.core.shapes import (
@@ -216,7 +227,6 @@ def build_pipeline(args: argparse.Namespace):
         default_bucket=env("DATA_BUCKET"),
         default_bucket_prefix="pipeline/definitions",
     )
-    _ = Session(boto_session=boto_session, default_bucket=env("DATA_BUCKET"))
 
     input_train_uri_default = args.input_train_uri or f"s3://{env('DATA_BUCKET')}/curated/train.csv"
     input_validation_uri_default = (
@@ -239,6 +249,7 @@ def build_pipeline(args: argparse.Namespace):
     runtime_root = f"s3://{env('DATA_BUCKET')}/pipeline/runtime/{env('PIPELINE_NAME')}"
     cache_config = CacheConfig(enable_caching=True, expire_after="P30D")
 
+    # --- Step 1: Preprocess ---
     preprocess_processor = ScriptProcessor(
         role=env("SAGEMAKER_PIPELINE_ROLE_ARN"),
         image_uri=image_uris.retrieve(
@@ -290,6 +301,7 @@ def build_pipeline(args: argparse.Namespace):
         cache_config=cache_config,
     )
 
+    # --- Step 2: Train ---
     trainer = ModelTrainer(
         training_image=image_uris.retrieve(
             framework="xgboost",
@@ -326,6 +338,7 @@ def build_pipeline(args: argparse.Namespace):
     )
     step_train = TrainingStep(name="TrainModel", step_args=trainer.train(), cache_config=cache_config)
 
+    # --- Step 3: Evaluate ---
     evaluation_report = PropertyFile(
         name="EvaluationReport",
         output_name="evaluation",
@@ -399,6 +412,7 @@ def build_pipeline(args: argparse.Namespace):
         cache_config=cache_config,
     )
 
+    # --- Step 4: Quality gate + Register ---
     evaluation_report_uri = Join(
         on="/",
         values=[
@@ -473,7 +487,14 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
+```
+
+Escribe el archivo y marca como ejecutable:
+
+```bash
+cat > "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
 chmod +x "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py"
 ```
 
@@ -518,19 +539,18 @@ uv run python "$TUTORIAL_ROOT/mlops_assets/upsert_pipeline.py" \
 
 ### 7. Iniciar una ejecucion
 
-```bash
-uv run python - <<'PY'
+```python
 import json
 import os
 from pathlib import Path
 
 import boto3
 
-session = boto3.Session(
+boto_session = boto3.Session(
     profile_name=os.environ["AWS_PROFILE"],
     region_name=os.environ["AWS_REGION"],
 )
-sm_client = session.client("sagemaker")
+sm_client = boto_session.client("sagemaker")
 response = sm_client.start_pipeline_execution(
     PipelineName=os.environ["PIPELINE_NAME"],
     PipelineParameters=[
@@ -543,27 +563,16 @@ response = sm_client.start_pipeline_execution(
 target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "pipeline_execution_arn.txt"
 target.write_text(response["PipelineExecutionArn"] + "\n", encoding="utf-8")
 print(json.dumps(response, indent=2))
-PY
 ```
 
 ### 8. Monitorizar el run y localizar el ultimo package
 
-```bash
-uv run python - <<'PY'
-import os
+```python
 import time
-from pathlib import Path
 
-import boto3
-
-session = boto3.Session(
-    profile_name=os.environ["AWS_PROFILE"],
-    region_name=os.environ["AWS_REGION"],
-)
-sm_client = session.client("sagemaker")
-execution_arn = (Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "pipeline_execution_arn.txt").read_text(
-    encoding="utf-8"
-).strip()
+execution_arn = (
+    Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "pipeline_execution_arn.txt"
+).read_text(encoding="utf-8").strip()
 
 terminal = {"Succeeded", "Failed", "Stopped"}
 while True:
@@ -592,7 +601,6 @@ if packages:
     target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "latest_model_package_arn.txt"
     target.write_text(latest + "\n", encoding="utf-8")
     print(f"latest_model_package_arn={latest}")
-PY
 ```
 
 ## IAM usado
@@ -620,4 +628,4 @@ PY
 
 ## Proximo paso
 
-Continuar con [`04-serving-sagemaker.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/04-serving-sagemaker.md).
+Continuar con [`04-serving-sagemaker.md`](./04-serving-sagemaker.md).
