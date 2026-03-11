@@ -28,10 +28,12 @@ set +a
 
 ## Paso a paso
 
-### 1. Crear el helper para XGBoost
+### 1. Crear el helper de feature engineering para XGBoost
 
-```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/prepare_xgb_inputs.py" <<'EOF'
+Este script se reutiliza en fases posteriores (pipeline, CI/CD). Guarda el siguiente contenido
+como `$TUTORIAL_ROOT/mlops_assets/prepare_xgb_inputs.py`:
+
+```python
 #!/usr/bin/env python
 from __future__ import annotations
 
@@ -121,14 +123,23 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
+```
+
+Escribe el archivo y marca como ejecutable:
+
+```bash
+cat > "$TUTORIAL_ROOT/mlops_assets/prepare_xgb_inputs.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
 chmod +x "$TUTORIAL_ROOT/mlops_assets/prepare_xgb_inputs.py"
 ```
 
 ### 2. Crear el evaluador reutilizable
 
-```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/evaluate.py" <<'EOF'
+Este script se reutiliza en la fase de pipeline. Guarda el siguiente contenido como
+`$TUTORIAL_ROOT/mlops_assets/evaluate.py`:
+
+```python
 #!/usr/bin/env python
 from __future__ import annotations
 
@@ -235,11 +246,21 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-EOF
+```
+
+Escribe el archivo y marca como ejecutable:
+
+```bash
+cat > "$TUTORIAL_ROOT/mlops_assets/evaluate.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
 chmod +x "$TUTORIAL_ROOT/mlops_assets/evaluate.py"
 ```
 
-### 3. Preparar los CSV numericos
+### 3. Preparar los CSV numericos para XGBoost
+
+Transforma los splits con cabeceras en CSV numericos headerless con label en la primera columna
+(formato que espera el contenedor XGBoost de SageMaker).
 
 ```bash
 uv run python "$TUTORIAL_ROOT/mlops_assets/prepare_xgb_inputs.py" \
@@ -263,18 +284,14 @@ aws s3 cp "$TUTORIAL_ROOT/data/sagemaker/train_xgb.csv" "$TRAIN_XGB_S3_URI" --pr
 aws s3 cp "$TUTORIAL_ROOT/data/sagemaker/validation_xgb.csv" "$VALIDATION_XGB_S3_URI" --profile "$AWS_PROFILE"
 ```
 
-### 5. Lanzar el training job
+### 5. Configurar sesion, rol e imagen XGBoost
 
-```bash
-uv run python - <<'PY'
+```python
 import os
-from pathlib import Path
 
 import boto3
 from sagemaker.core import image_uris
 from sagemaker.core.helper.session_helper import Session, get_execution_role
-from sagemaker.train import ModelTrainer
-from sagemaker.train.configs import Compute, InputData, OutputDataConfig
 
 boto_session = boto3.Session(
     profile_name=os.environ["AWS_PROFILE"],
@@ -294,6 +311,18 @@ xgb_image_uri = image_uris.retrieve(
     py_version="py3",
     instance_type="ml.m5.large",
 )
+
+print(f"role_arn={role_arn}")
+print(f"xgb_image_uri={xgb_image_uri}")
+```
+
+### 6. Configurar y lanzar el training job con ModelTrainer
+
+```python
+from pathlib import Path
+
+from sagemaker.train import ModelTrainer
+from sagemaker.train.configs import Compute, InputData, OutputDataConfig
 
 trainer = ModelTrainer(
     training_image=xgb_image_uri,
@@ -326,33 +355,27 @@ trainer = ModelTrainer(
     ],
 )
 
-training_job = trainer.train(wait=True, logs=True)
+trainer.train(wait=True, logs=True)
+
+training_job = trainer._latest_training_job
+training_job_name = training_job.training_job_name
+
 output_path = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "training_job_name.txt"
-output_path.write_text(training_job.name + "\n", encoding="utf-8")
-print(f"training_job={training_job.name}")
-PY
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_path.write_text(training_job_name + "\n", encoding="utf-8")
+print(f"training_job_name={training_job_name}")
 ```
 
-### 6. Descargar el modelo entrenado
+### 7. Descargar el modelo entrenado
 
-```bash
-uv run python - <<'PY'
-import os
-from pathlib import Path
-
-import boto3
-
+```python
 tutorial_root = Path(os.environ["TUTORIAL_ROOT"])
 training_job_name = (tutorial_root / "artifacts" / "training_job_name.txt").read_text(
     encoding="utf-8"
 ).strip()
 
-session = boto3.Session(
-    profile_name=os.environ["AWS_PROFILE"],
-    region_name=os.environ["AWS_REGION"],
-)
-sm_client = session.client("sagemaker")
-s3_client = session.client("s3")
+sm_client = boto_session.client("sagemaker")
+s3_client = boto_session.client("s3")
 
 job_desc = sm_client.describe_training_job(TrainingJobName=training_job_name)
 model_artifact_s3_uri = job_desc["ModelArtifacts"]["S3ModelArtifacts"]
@@ -364,10 +387,9 @@ s3_client.download_file(bucket, key, str(target))
 
 print(f"model_artifact_s3_uri={model_artifact_s3_uri}")
 print(f"downloaded_to={target}")
-PY
 ```
 
-### 7. Evaluar el modelo localmente
+### 8. Evaluar el modelo localmente
 
 ```bash
 uv run python "$TUTORIAL_ROOT/mlops_assets/evaluate.py" \
@@ -377,16 +399,15 @@ uv run python "$TUTORIAL_ROOT/mlops_assets/evaluate.py" \
   --output "$TUTORIAL_ROOT/artifacts/evaluation.json"
 ```
 
-### 8. Emitir la decision de promocion
+### 9. Emitir la decision de promocion
 
-```bash
-uv run python - <<'PY'
+```python
 import json
-import os
-from pathlib import Path
 
 tutorial_root = Path(os.environ["TUTORIAL_ROOT"])
-evaluation = json.loads((tutorial_root / "artifacts" / "evaluation.json").read_text(encoding="utf-8"))
+evaluation = json.loads(
+    (tutorial_root / "artifacts" / "evaluation.json").read_text(encoding="utf-8")
+)
 payload = {
     "threshold_accuracy": evaluation["thresholds"]["accuracy_threshold"],
     "observed_accuracy": evaluation["metrics"]["accuracy"],
@@ -395,10 +416,9 @@ payload = {
 target = tutorial_root / "artifacts" / "promotion_decision.json"
 target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(payload, indent=2))
-PY
 ```
 
-### 9. Publicar la evidencia en S3
+### 10. Publicar la evidencia en S3
 
 ```bash
 aws s3 cp "$TUTORIAL_ROOT/artifacts/evaluation.json" \
@@ -437,4 +457,4 @@ aws s3 cp "$TUTORIAL_ROOT/artifacts/promotion_decision.json" \
 
 ## Proximo paso
 
-Continuar con [`03-sagemaker-pipeline.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/03-sagemaker-pipeline.md).
+Continuar con [`03-sagemaker-pipeline.md`](./03-sagemaker-pipeline.md).
