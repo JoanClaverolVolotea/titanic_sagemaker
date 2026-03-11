@@ -400,7 +400,7 @@ def build_pipeline(args: argparse.Namespace):
             "--validation",
             "/opt/ml/processing/validation/validation_xgb.csv",
             "--accuracy-threshold",
-            accuracy_threshold,
+            Join(on="", values=[accuracy_threshold]),
             "--output",
             "/opt/ml/processing/evaluation/evaluation.json",
         ],
