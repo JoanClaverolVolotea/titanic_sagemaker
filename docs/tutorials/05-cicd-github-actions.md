@@ -88,8 +88,7 @@ Tambien asume estas repository variables en GitHub:
 - `GHA_ROLE_ARN`
 - `ACCURACY_THRESHOLD`
 
-```bash
-cat > "$TUTORIAL_ROOT/.github/workflows/sagemaker-tutorial.yml" <<'EOF'
+```yaml
 name: Titanic SageMaker Tutorial
 
 on:
@@ -351,10 +350,10 @@ jobs:
           from sagemaker.core.resources import ModelPackage
           from sagemaker.serve.model_builder import ModelBuilder
 
-          session = boto3.Session(profile_name=os.environ["AWS_PROFILE"], region_name=os.environ["AWS_REGION"])
-          sm_client = session.client("sagemaker")
-          runtime_client = session.client("sagemaker-runtime")
-          sm_session = Session(boto_session=session)
+          boto_session = boto3.Session(profile_name=os.environ["AWS_PROFILE"], region_name=os.environ["AWS_REGION"])
+          sm_client = boto_session.client("sagemaker")
+          runtime_client = boto_session.client("sagemaker-runtime")
+          sm_session = Session(boto_session=boto_session, default_bucket=os.environ["DATA_BUCKET"])
 
           sm_client.update_model_package(
               ModelPackageArn=os.environ["MODEL_PACKAGE_ARN"],
@@ -362,13 +361,16 @@ jobs:
           )
 
           model_package = ModelPackage.get(model_package_name=os.environ["MODEL_PACKAGE_ARN"])
-          builder = ModelBuilder(
-              model=model_package,
+          container = model_package.inference_specification.containers[0]
+
+          staging_builder = ModelBuilder(
+              s3_model_data_url=container.model_data_url,
+              image_uri=container.image,
               role_arn=os.environ["SAGEMAKER_EXECUTION_ROLE_ARN"],
               sagemaker_session=sm_session,
           )
-          builder.build(model_name=f"{os.environ['STAGING_ENDPOINT_NAME']}-model")
-          builder.deploy(
+          staging_builder.build(model_name=f"{os.environ['STAGING_ENDPOINT_NAME']}-model")
+          staging_builder.deploy(
               endpoint_name=os.environ["STAGING_ENDPOINT_NAME"],
               instance_type="ml.m5.large",
               initial_instance_count=1,
@@ -384,7 +386,8 @@ jobs:
               raise SystemExit("Smoke test vacio")
 
           prod_builder = ModelBuilder(
-              model=model_package,
+              s3_model_data_url=container.model_data_url,
+              image_uri=container.image,
               role_arn=os.environ["SAGEMAKER_EXECUTION_ROLE_ARN"],
               sagemaker_session=sm_session,
           )
@@ -395,7 +398,15 @@ jobs:
               initial_instance_count=1,
           )
           PY
-EOF
+```
+
+Guarda como `$TUTORIAL_ROOT/.github/workflows/sagemaker-tutorial.yml` y ejecuta:
+
+```bash
+mkdir -p "$TUTORIAL_ROOT/.github/workflows"
+cat > "$TUTORIAL_ROOT/.github/workflows/sagemaker-tutorial.yml" <<'YAMLEOF'
+# (pega aqui el contenido YAML de arriba)
+YAMLEOF
 ```
 
 ### 4. Versionar el contrato del workflow
@@ -436,4 +447,4 @@ git add \
 
 ## Proximo paso
 
-Continuar con [06-observability-operations.md](./06-observability-operations.md).
+Continuar con [`06-observability-operations.md`](./06-observability-operations.md).
