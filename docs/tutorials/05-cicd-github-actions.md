@@ -3,7 +3,7 @@
 ## Objetivo y contexto
 
 Dejar un workflow completo de GitHub Actions que replique el flujo manual del tutorial usando
-OIDC, `uv`, el mismo bootstrap local y los mismos archivos creados en fases anteriores.
+OIDC, `uv`, el mismo contrato local y los mismos archivos creados en fases anteriores.
 
 ## Resultado minimo esperado
 
@@ -23,11 +23,15 @@ OIDC, `uv`, el mismo bootstrap local y los mismos archivos creados en fases ante
 ## Bootstrap auto-contenido
 
 ```bash
+export REPO_ROOT="/ruta/a/este/repo/titanic_sagemaker"
 cd "$HOME/titanic-sagemaker-tutorial"
 set -a
 source "$HOME/titanic-sagemaker-tutorial/.env.tutorial"
 set +a
 ```
+
+`REPO_ROOT` debe apuntar al repo versionado que contiene `config/project-manifest.json` y
+`scripts/ensure_github_actions_role.py`.
 
 ## Paso a paso
 
@@ -44,259 +48,28 @@ set +a
 echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
 ```
 
-### 2. Crear el bootstrap OIDC del runner
+### 2. Validar o converger el bootstrap OIDC del runner
 
 ```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/bootstrap_github_actions_role.py" <<'EOF'
-#!/usr/bin/env python
-from __future__ import annotations
+cd "$REPO_ROOT"
+python3 -m json.tool config/project-manifest.json >/dev/null
 
-import argparse
-import json
-import os
-
-import boto3
-from botocore.exceptions import ClientError
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--check", action="store_true")
-    return parser.parse_args()
-
-
-def require_mode(args: argparse.Namespace) -> str:
-    if args.apply and args.check:
-        raise SystemExit("Usa solo uno: --check o --apply")
-    if args.apply:
-        return "apply"
-    return "check"
-
-
-def env(name: str) -> str:
-    value = os.environ.get(name, "")
-    if not value:
-        raise SystemExit(f"Falta la variable {name}")
-    return value
-
-
-def role_tags() -> list[dict[str, str]]:
-    payload = {
-        "project": env("PROJECT_NAME"),
-        "env": env("ENVIRONMENT"),
-        "owner": env("OWNER"),
-        "managed_by": env("MANAGED_BY"),
-        "cost_center": env("COST_CENTER"),
-        "module": "tutorial-bootstrap",
-        "usage": "github-actions-deployer",
-    }
-    return [{"Key": key, "Value": value} for key, value in payload.items()]
-
-
-def oidc_provider_arn() -> str:
-    return f"arn:aws:iam::{env('ACCOUNT_ID')}:oidc-provider/token.actions.githubusercontent.com"
-
-
-def trust_policy() -> str:
-    repo = env("GITHUB_REPOSITORY")
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AllowGitHubActionsOidcAssumeRole",
-                    "Effect": "Allow",
-                    "Principal": {"Federated": oidc_provider_arn()},
-                    "Action": "sts:AssumeRoleWithWebIdentity",
-                    "Condition": {
-                        "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:sub": [
-                                f"repo:{repo}:pull_request",
-                                f"repo:{repo}:ref:refs/heads/main",
-                                f"repo:{repo}:environment:dev",
-                                f"repo:{repo}:environment:prod",
-                            ]
-                        },
-                    },
-                }
-            ],
-        }
-    )
-
-
-def permissions_policy() -> str:
-    bucket = env("DATA_BUCKET")
-    region = env("AWS_REGION")
-    account_id = env("ACCOUNT_ID")
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AllowIdentityCheck",
-                    "Effect": "Allow",
-                    "Action": ["sts:GetCallerIdentity"],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "AllowTutorialBucketReadWrite",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
-                    "Resource": f"arn:aws:s3:::{bucket}",
-                    "Condition": {
-                        "StringLike": {
-                            "s3:prefix": ["curated/*", "training/*", "evaluation/*", "pipeline/*"]
-                        }
-                    },
-                },
-                {
-                    "Sid": "AllowTutorialBucketObjectReadWrite",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                    "Resource": [
-                        f"arn:aws:s3:::{bucket}/curated/*",
-                        f"arn:aws:s3:::{bucket}/training/*",
-                        f"arn:aws:s3:::{bucket}/evaluation/*",
-                        f"arn:aws:s3:::{bucket}/pipeline/*",
-                    ],
-                },
-                {
-                    "Sid": "AllowSageMakerRead",
-                    "Effect": "Allow",
-                    "Action": ["sagemaker:Describe*", "sagemaker:List*"],
-                    "Resource": "*",
-                    "Condition": {"StringEquals": {"aws:RequestedRegion": region}},
-                },
-                {
-                    "Sid": "AllowSageMakerBuildDeploy",
-                    "Effect": "Allow",
-                    "Action": [
-                        "sagemaker:AddTags",
-                        "sagemaker:CreateEndpoint",
-                        "sagemaker:CreateEndpointConfig",
-                        "sagemaker:CreateModel",
-                        "sagemaker:CreatePipeline",
-                        "sagemaker:InvokeEndpoint",
-                        "sagemaker:StartPipelineExecution",
-                        "sagemaker:UpdateEndpoint",
-                        "sagemaker:UpdateModelPackage",
-                        "sagemaker:UpdatePipeline",
-                    ],
-                    "Resource": "*",
-                    "Condition": {"StringEquals": {"aws:RequestedRegion": region}},
-                },
-                {
-                    "Sid": "PassOnlySageMakerRoles",
-                    "Effect": "Allow",
-                    "Action": "iam:PassRole",
-                    "Resource": [
-                        env("SAGEMAKER_PIPELINE_ROLE_ARN"),
-                        env("SAGEMAKER_EXECUTION_ROLE_ARN"),
-                    ],
-                    "Condition": {
-                        "StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}
-                    },
-                },
-                {
-                    "Sid": "AllowModelPackageApproval",
-                    "Effect": "Allow",
-                    "Action": ["sagemaker:UpdateModelPackage"],
-                    "Resource": (
-                        f"arn:aws:sagemaker:{region}:{account_id}:model-package/"
-                        f"{env('MODEL_PACKAGE_GROUP_NAME')}/*"
-                    ),
-                },
-            ],
-        }
-    )
-
-
-def ensure_oidc_provider(iam_client, mode: str) -> None:
-    arn = oidc_provider_arn()
-    try:
-        iam_client.get_open_id_connect_provider(OpenIDConnectProviderArn=arn)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") != "NoSuchEntity":
-            raise
-        if mode == "check":
-            raise SystemExit("Falta el provider OIDC token.actions.githubusercontent.com") from exc
-        iam_client.create_open_id_connect_provider(
-            Url="https://token.actions.githubusercontent.com",
-            ClientIDList=["sts.amazonaws.com"],
-            ThumbprintList=["6938fd4d98bab03faadb97b34396831e3780aea1"],
-            Tags=role_tags(),
-        )
-
-
-def ensure_role(iam_client, mode: str) -> None:
-    role_name = env("GITHUB_ACTIONS_ROLE_NAME")
-    policy_name = f"{role_name}-policy"
-    exists = True
-    try:
-        iam_client.get_role(RoleName=role_name)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
-            exists = False
-        else:
-            raise
-
-    if not exists and mode == "check":
-        raise SystemExit(f"Falta role: {role_name}")
-
-    if not exists:
-        iam_client.create_role(
-            RoleName=role_name,
-            AssumeRolePolicyDocument=trust_policy(),
-            Description="Tutorial-managed GitHub Actions deployer role.",
-            Tags=role_tags(),
-        )
-
-    if mode == "apply":
-        iam_client.update_assume_role_policy(RoleName=role_name, PolicyDocument=trust_policy())
-        iam_client.put_role_policy(
-            RoleName=role_name,
-            PolicyName=policy_name,
-            PolicyDocument=permissions_policy(),
-        )
-        iam_client.tag_role(RoleName=role_name, Tags=role_tags())
-
-    iam_client.get_role(RoleName=role_name)
-    iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
-
-
-def main() -> None:
-    args = parse_args()
-    mode = require_mode(args)
-    session = boto3.Session(profile_name=env("AWS_PROFILE"), region_name=env("AWS_REGION"))
-    iam_client = session.client("iam")
-    ensure_oidc_provider(iam_client, mode)
-    ensure_role(iam_client, mode)
-    print(f"[INFO] github-actions-role {mode} complete")
-
-
-if __name__ == "__main__":
-    main()
-EOF
-chmod +x "$TUTORIAL_ROOT/mlops_assets/bootstrap_github_actions_role.py"
-```
-
-### 3. Validar o converger el OIDC role
-
-```bash
-uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap_github_actions_role.py" --check
+uv run --with boto3 --with botocore python scripts/ensure_github_actions_role.py --check
 # Si falta el provider o el role:
-# uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap_github_actions_role.py" --apply
+# uv run --with boto3 --with botocore python scripts/ensure_github_actions_role.py --apply
+
+cd "$TUTORIAL_ROOT"
 ```
 
-### 4. Crear el workflow completo
+Este script es la fuente de verdad actual para el role OIDC del runner. No crees un helper
+inline nuevo en el workspace del tutorial para esta parte.
+
+### 3. Crear el workflow completo
 
 El workflow asume que has versionado en tu repositorio estos archivos creados a lo largo del
 tutorial:
 
 - `pyproject.toml`
-- `mlops_assets/bootstrap.py`
 - `mlops_assets/evaluate.py`
 - `mlops_assets/preprocess.py`
 - `mlops_assets/upsert_pipeline.py`
@@ -376,9 +149,9 @@ jobs:
           export ACCURACY_THRESHOLD=${{ vars.ACCURACY_THRESHOLD }}
           export PROJECT_NAME=titanic-sagemaker
           export ENVIRONMENT=dev
-          export OWNER=github-actions
-          export MANAGED_BY=tutorials
-          export COST_CENTER=tutorial
+          export OWNER=data-science-user
+          export MANAGED_BY=scripts
+          export COST_CENTER=data-science
           export GITHUB_REPOSITORY=${{ github.repository }}
           EOF_ENV
 
@@ -390,7 +163,14 @@ jobs:
           set -a
           source .env.tutorial
           set +a
-          uv run python mlops_assets/bootstrap.py --check
+          aws sts get-caller-identity --profile "${AWS_PROFILE}"
+          aws s3api get-bucket-location --bucket "${DATA_BUCKET}" --profile "${AWS_PROFILE}"
+          aws sagemaker describe-model-package-group \
+            --model-package-group-name "${MODEL_PACKAGE_GROUP_NAME}" \
+            --profile "${AWS_PROFILE}" \
+            --region "${AWS_REGION}"
+          test -n "${SAGEMAKER_EXECUTION_ROLE_ARN}"
+          test -n "${SAGEMAKER_PIPELINE_ROLE_ARN}"
 
       - name: Publish pipeline assets
         run: |
@@ -547,9 +327,9 @@ jobs:
           export ACCURACY_THRESHOLD=${{ vars.ACCURACY_THRESHOLD }}
           export PROJECT_NAME=titanic-sagemaker
           export ENVIRONMENT=dev
-          export OWNER=github-actions
-          export MANAGED_BY=tutorials
-          export COST_CENTER=tutorial
+          export OWNER=data-science-user
+          export MANAGED_BY=scripts
+          export COST_CENTER=data-science
           export GITHUB_REPOSITORY=${{ github.repository }}
           EOF_ENV
 
@@ -618,7 +398,7 @@ jobs:
 EOF
 ```
 
-### 5. Versionar el contrato del workflow
+### 4. Versionar el contrato del workflow
 
 ```bash
 git add \
@@ -631,12 +411,13 @@ git add \
 
 ## IAM usado
 
-- `DataScienceTutorialBootstrap` para crear el provider OIDC y el role del runner.
+- `DataScienceTutorialBootstrap` para validar o converger una sola vez el provider OIDC y el
+  role del runner con `scripts/ensure_github_actions_role.py`.
 - `DataScienceTutorialOperator` para reproducir localmente el contrato del workflow.
 
 ## Evidencia requerida
 
-1. Salida de `bootstrap_github_actions_role.py`
+1. Salida de `scripts/ensure_github_actions_role.py --check` o `--apply`
 2. Workflow `sagemaker-tutorial.yml`
 3. Variables configuradas en GitHub
 
@@ -650,7 +431,9 @@ git add \
 
 - Si no actualizas `GITHUB_REPOSITORY`, el trust policy no coincidira con tu repo real.
 - El workflow asume que `pyproject.toml` y `mlops_assets/` se versionan en el repo.
+- Si `REPO_ROOT` no apunta al repo correcto, no podras usar la fuente de verdad oficial para el
+  role OIDC.
 
 ## Proximo paso
 
-Continuar con [`06-observability-operations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/06-observability-operations.md).
+Continuar con [06-observability-operations.md](./06-observability-operations.md).

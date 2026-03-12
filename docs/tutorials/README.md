@@ -11,19 +11,21 @@ AWS CLI.
    - `DataScienceTutorialBootstrap` para `00` y el bootstrap OIDC de `05`
    - `DataScienceTutorialOperator` para `01` a `06`
    - `DataScienceTutorialCleanup` para borrados guiados de `04` y `07`
-3. Instala `uv`.
-4. Sigue el orden exacto de este folder.
+3. Usa [docs/aws/policies/README.md](../aws/policies/README.md) como guia canonica si DevOps
+   debe crear, actualizar, adjuntar o retirar esas managed policies.
+4. Instala `uv`.
+5. Sigue el orden exacto de este folder.
 
 ## Orden de ejecucion
 
-1. [`00-foundations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/00-foundations.md)
-2. [`01-data-ingestion.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/01-data-ingestion.md)
-3. [`02-training-validation.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/02-training-validation.md)
-4. [`03-sagemaker-pipeline.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/03-sagemaker-pipeline.md)
-5. [`04-serving-sagemaker.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/04-serving-sagemaker.md)
-6. [`05-cicd-github-actions.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/05-cicd-github-actions.md)
-7. [`06-observability-operations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/06-observability-operations.md)
-8. [`07-cost-governance.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/07-cost-governance.md)
+1. [00-foundations.md](./00-foundations.md)
+2. [01-data-ingestion.md](./01-data-ingestion.md)
+3. [02-training-validation.md](./02-training-validation.md)
+4. [03-sagemaker-pipeline.md](./03-sagemaker-pipeline.md)
+5. [04-serving-sagemaker.md](./04-serving-sagemaker.md)
+6. [05-cicd-github-actions.md](./05-cicd-github-actions.md)
+7. [06-observability-operations.md](./06-observability-operations.md)
+8. [07-cost-governance.md](./07-cost-governance.md)
 
 ## Contrato global del tutorial
 
@@ -45,8 +47,8 @@ Reglas globales:
 2. La instalacion de dependencias se hace con `uv sync`.
 3. Toda ejecucion Python se hace con `uv run python`.
 4. Cada fase empieza cargando `.env.tutorial`.
-5. Ninguna fase requiere abrir archivos fuera de este folder de tutoriales o del workspace
-   que vas creando al seguirlos.
+5. Ninguna fase requiere abrir archivos fuera de este folder, del workspace local que vas
+   creando o de los scripts/policies versionados en este mismo repo.
 
 ## Variables compartidas
 
@@ -74,7 +76,7 @@ Estas variables quedan fijadas en la fase 00 y se reutilizan despues:
 
 ```mermaid
 flowchart TD
-  F0[00 Foundations\nuv + bootstrap AWS] --> D1[01 Data Ingestion\nDownload + split + S3]
+  F0[00 Foundations\nuv + contrato local + validacion AWS CLI] --> D1[01 Data Ingestion\nDownload + split + S3]
   D1 --> T2[02 Training + Validation\nModelTrainer + evaluation.json]
   T2 --> P3[03 SageMaker Pipeline\nUpsert + execution + registry]
   P3 --> S4[04 Serving\nModelPackage -> ModelBuilder -> invoke]
@@ -93,4 +95,4 @@ flowchart TD
 
 ## Proximo paso
 
-Empieza por [`00-foundations.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/00-foundations.md).
+Empieza por [00-foundations.md](./00-foundations.md).

@@ -32,8 +32,10 @@ set +a
 
 ### 1. Resolver el `ModelPackageArn`
 
-```bash
-uv run python - <<'PY'
+Si la fase 03 dejo `latest_model_package_arn.txt`, lo usa directamente. Si no, consulta el
+registry para obtener el ultimo package.
+
+```python
 import os
 from pathlib import Path
 
@@ -57,7 +59,16 @@ if not target.exists():
     target.write_text(packages[0]["ModelPackageArn"] + "\n", encoding="utf-8")
 
 print(target.read_text(encoding="utf-8").strip())
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/resolve_model_package.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/resolve_model_package.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/resolve_model_package.py"
 
 export MODEL_PACKAGE_ARN=$(cat "$TUTORIAL_ROOT/artifacts/latest_model_package_arn.txt")
 echo "MODEL_PACKAGE_ARN=$MODEL_PACKAGE_ARN"
@@ -65,8 +76,7 @@ echo "MODEL_PACKAGE_ARN=$MODEL_PACKAGE_ARN"
 
 ### 2. Aprobar el package si sigue pendiente
 
-```bash
-uv run python - <<'PY'
+```python
 import os
 
 import boto3
@@ -86,13 +96,23 @@ if desc["ModelApprovalStatus"] != "Approved":
         ModelApprovalStatus="Approved",
     )
     print("model_package_approved=true")
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/approve_model_package.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/approve_model_package.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/approve_model_package.py"
 ```
 
 ### 3. Desplegar `staging`
 
-```bash
-uv run python - <<'PY'
+Extrae la imagen y el artefacto del modelo registrado, y despliega con `ModelBuilder`.
+
+```python
 import os
 from pathlib import Path
 
@@ -105,7 +125,7 @@ boto_session = boto3.Session(
     profile_name=os.environ["AWS_PROFILE"],
     region_name=os.environ["AWS_REGION"],
 )
-session = Session(boto_session=boto_session)
+session = Session(boto_session=boto_session, default_bucket=os.environ["DATA_BUCKET"])
 
 try:
     role_arn = get_execution_role()
@@ -113,8 +133,11 @@ except Exception:
     role_arn = os.environ["SAGEMAKER_EXECUTION_ROLE_ARN"]
 
 model_package = ModelPackage.get(model_package_name=os.environ["MODEL_PACKAGE_ARN"])
+container = model_package.inference_specification.containers[0]
+
 builder = ModelBuilder(
-    model=model_package,
+    s3_model_data_url=container.model_data_url,
+    image_uri=container.image,
     role_arn=role_arn,
     sagemaker_session=session,
 )
@@ -128,13 +151,23 @@ endpoint = builder.deploy(
 target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "staging_endpoint_name.txt"
 target.write_text(endpoint.endpoint_name + "\n", encoding="utf-8")
 print(f"staging_endpoint={endpoint.endpoint_name}")
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/deploy_staging.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/deploy_staging.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/deploy_staging.py"
 ```
 
 ### 4. Ejecutar smoke test
 
-```bash
-uv run python - <<'PY'
+Envia dos filas de ejemplo al endpoint `staging` y verifica que responde.
+
+```python
 import os
 from pathlib import Path
 
@@ -157,13 +190,23 @@ assert predictions.strip(), "Smoke test vacio"
 target = Path(os.environ["TUTORIAL_ROOT"]) / "artifacts" / "staging_smoke_test.txt"
 target.write_text(predictions + "\n", encoding="utf-8")
 print(predictions)
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/smoke_test_staging.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/smoke_test_staging.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/smoke_test_staging.py"
 ```
 
 ### 5. Desplegar `prod`
 
-```bash
-uv run python - <<'PY'
+Replica el mismo modelo aprobado en el endpoint de produccion.
+
+```python
 import os
 
 import boto3
@@ -175,7 +218,7 @@ boto_session = boto3.Session(
     profile_name=os.environ["AWS_PROFILE"],
     region_name=os.environ["AWS_REGION"],
 )
-session = Session(boto_session=boto_session)
+session = Session(boto_session=boto_session, default_bucket=os.environ["DATA_BUCKET"])
 
 try:
     role_arn = get_execution_role()
@@ -183,8 +226,11 @@ except Exception:
     role_arn = os.environ["SAGEMAKER_EXECUTION_ROLE_ARN"]
 
 model_package = ModelPackage.get(model_package_name=os.environ["MODEL_PACKAGE_ARN"])
+container = model_package.inference_specification.containers[0]
+
 builder = ModelBuilder(
-    model=model_package,
+    s3_model_data_url=container.model_data_url,
+    image_uri=container.image,
     role_arn=role_arn,
     sagemaker_session=session,
 )
@@ -195,13 +241,21 @@ endpoint = builder.deploy(
     initial_instance_count=1,
 )
 print(f"prod_endpoint={endpoint.endpoint_name}")
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/deploy_prod.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/deploy_prod.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/deploy_prod.py"
 ```
 
 ### 6. Verificar ambos endpoints
 
-```bash
-uv run python - <<'PY'
+```python
 import os
 
 import boto3
@@ -215,15 +269,22 @@ sm_client = session.client("sagemaker")
 for endpoint_name in [os.environ["STAGING_ENDPOINT_NAME"], os.environ["PROD_ENDPOINT_NAME"]]:
     desc = sm_client.describe_endpoint(EndpointName=endpoint_name)
     print(f"{endpoint_name}: {desc['EndpointStatus']}")
-PY
+```
+
+Guarda como `$TUTORIAL_ROOT/scripts/verify_endpoints.py` y ejecuta:
+
+```bash
+cat > "$TUTORIAL_ROOT/scripts/verify_endpoints.py" <<'PYEOF'
+# (pega aqui el contenido Python de arriba)
+PYEOF
+
+uv run python "$TUTORIAL_ROOT/scripts/verify_endpoints.py"
 ```
 
 ### 7. Cleanup opcional de `staging`
 
-```bash
-# Si quieres borrar staging al terminar las validaciones, pasa a la fase 07
-# o ejecuta el borrado manual con DataScienceTutorialCleanup.
-```
+Si quieres borrar staging al terminar las validaciones, pasa a la fase 07 o ejecuta el borrado
+manual con `DataScienceTutorialCleanup`.
 
 ## IAM usado
 
@@ -249,4 +310,4 @@ PY
 
 ## Proximo paso
 
-Continuar con [`05-cicd-github-actions.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/05-cicd-github-actions.md).
+Continuar con [`05-cicd-github-actions.md`](./05-cicd-github-actions.md).

@@ -2,26 +2,39 @@
 
 ## Objetivo y contexto
 
-Dejar listo un workspace autocontenido para el roadmap, con `uv` como unico package manager,
-variables compartidas en `.env.tutorial` y recursos AWS bootstrap creados sin depender de
-archivos externos.
+Dejar listo un workspace local autocontenido para el roadmap, con `uv` como unico package
+manager, variables compartidas en `.env.tutorial` y validaciones AWS CLI sobre recursos
+duraderos ya preparados fuera del tutorial.
+
+Esta fase no crea el usuario `data-science-user` ni genera bootstrap AWS inline. El usuario y
+las managed policies del tutorial se gestionan fuera de esta fase por el equipo de DevOps.
 
 ## Resultado minimo esperado
 
 1. Workspace local creado en `~/titanic-sagemaker-tutorial`.
 2. `pyproject.toml` creado y dependencias instaladas con `uv sync`.
 3. `.env.tutorial` con nombres y ARNs canonicos del tutorial.
-4. Bucket, roles de SageMaker y Model Package Group convergidos.
-5. Imports base de SageMaker V3 verificados con `uv run python`.
+4. Handoff IAM claro hacia [docs/aws/policies/README.md](../aws/policies/README.md) para
+   `DataScienceTutorialBootstrap`, `DataScienceTutorialOperator` y
+   `DataScienceTutorialCleanup`.
+5. Bucket, roles de SageMaker y Model Package Group validados por AWS CLI.
+6. Imports base de SageMaker V3 verificados con `uv run python`.
 
 ## Prerequisitos concretos
 
 1. `uv` instalado.
 2. AWS CLI instalado.
-3. Perfil `data-science-user` operativo.
-4. Bundle IAM disponible para esta fase: `DataScienceTutorialBootstrap`.
+3. El usuario IAM `data-science-user` ya existe y el perfil AWS CLI `data-science-user`
+   funciona localmente.
+4. DevOps ya aplico o valido las managed policies humanas siguiendo
+   [docs/aws/policies/README.md](../aws/policies/README.md).
+5. Los recursos duraderos del tutorial ya existen en AWS:
+   - bucket `DATA_BUCKET`
+   - role `SAGEMAKER_EXECUTION_ROLE_NAME`
+   - role `SAGEMAKER_PIPELINE_ROLE_NAME`
+   - Model Package Group `MODEL_PACKAGE_GROUP_NAME`
 
-## Bootstrap auto-contenido
+## Bootstrap local
 
 ```bash
 export TUTORIAL_ROOT="$HOME/titanic-sagemaker-tutorial"
@@ -86,8 +99,8 @@ export ACCURACY_THRESHOLD=0.78
 export PROJECT_NAME=titanic-sagemaker
 export ENVIRONMENT=dev
 export OWNER=data-science-user
-export MANAGED_BY=tutorials
-export COST_CENTER=tutorial
+export MANAGED_BY=scripts
+export COST_CENTER=data-science
 export GITHUB_REPOSITORY=replace-me/replace-me
 EOF
 
@@ -96,426 +109,79 @@ source "$TUTORIAL_ROOT/.env.tutorial"
 set +a
 ```
 
-### 3. Crear el bootstrap local de AWS
+### 3. Confirmar el handoff IAM con DevOps
+
+Usa [docs/aws/policies/README.md](../aws/policies/README.md) como fuente canonica para el
+bootstrap IAM del tutorial.
+
+Politicas humanas del tutorial:
+
+- `DataScienceTutorialBootstrap`
+- `DataScienceTutorialOperator`
+- `DataScienceTutorialCleanup`
+
+Reglas para esta fase:
+
+1. `00-foundations` no crea `data-science-user`.
+2. `00-foundations` no crea managed policies IAM.
+3. El equipo DevOps aplica o actualiza esas policies por AWS CLI o AWS Console siguiendo el
+   README de policies.
+4. Si alguna validacion AWS CLI falla en el siguiente paso, detente y vuelve a esa guia antes
+   de continuar con la fase 01.
+
+### 4. Validar recursos duraderos por AWS CLI
 
 ```bash
-cat > "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" <<'EOF'
-#!/usr/bin/env python
-from __future__ import annotations
+set -euo pipefail
 
-import argparse
-import json
-import os
-
-import boto3
-from botocore.exceptions import ClientError
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--check", action="store_true")
-    return parser.parse_args()
-
-
-def require_mode(args: argparse.Namespace) -> str:
-    if args.apply and args.check:
-        raise SystemExit("Usa solo uno: --check o --apply")
-    if args.apply:
-        return "apply"
-    return "check"
-
-
-def env(name: str) -> str:
-    value = os.environ.get(name, "")
-    if not value:
-        raise SystemExit(f"Falta la variable {name}")
-    return value
-
-
-def tags(module: str, usage: str) -> list[dict[str, str]]:
-    payload = {
-        "project": env("PROJECT_NAME"),
-        "env": env("ENVIRONMENT"),
-        "owner": env("OWNER"),
-        "managed_by": env("MANAGED_BY"),
-        "cost_center": env("COST_CENTER"),
-        "module": module,
-        "usage": usage,
-    }
-    return [{"Key": key, "Value": value} for key, value in payload.items()]
-
-
-def bucket_policy(bucket_name: str) -> str:
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "DenyInsecureTransport",
-                    "Effect": "Deny",
-                    "Principal": "*",
-                    "Action": "s3:*",
-                    "Resource": [
-                        f"arn:aws:s3:::{bucket_name}",
-                        f"arn:aws:s3:::{bucket_name}/*",
-                    ],
-                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
-                }
-            ],
-        }
-    )
-
-
-def assume_role_policy() -> str:
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"Service": "sagemaker.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }
-            ],
-        }
-    )
-
-
-def execution_inline_policy() -> str:
-    bucket_name = env("DATA_BUCKET")
-    region = env("AWS_REGION")
-    account_id = env("ACCOUNT_ID")
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "ReadCuratedAndCode",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{bucket_name}/curated/*",
-                        f"arn:aws:s3:::{bucket_name}/pipeline/*",
-                    ],
-                },
-                {
-                    "Sid": "ListTutorialBucket",
-                    "Effect": "Allow",
-                    "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
-                    "Resource": [f"arn:aws:s3:::{bucket_name}"],
-                },
-                {
-                    "Sid": "WriteRuntimeArtifacts",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                    "Resource": [
-                        f"arn:aws:s3:::{bucket_name}/training/*",
-                        f"arn:aws:s3:::{bucket_name}/evaluation/*",
-                        f"arn:aws:s3:::{bucket_name}/pipeline/*",
-                    ],
-                },
-                {
-                    "Sid": "AllowCloudWatchLogs",
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:DescribeLogStreams",
-                        "logs:PutLogEvents",
-                    ],
-                    "Resource": [
-                        f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*",
-                        f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*:log-stream:*",
-                    ],
-                },
-                {
-                    "Sid": "AllowEcrImagePull",
-                    "Effect": "Allow",
-                    "Action": [
-                        "ecr:GetAuthorizationToken",
-                        "ecr:BatchCheckLayerAvailability",
-                        "ecr:GetDownloadUrlForLayer",
-                        "ecr:BatchGetImage",
-                    ],
-                    "Resource": "*",
-                },
-            ],
-        }
-    )
-
-
-def pipeline_inline_policy() -> str:
-    bucket_name = env("DATA_BUCKET")
-    region = env("AWS_REGION")
-    account_id = env("ACCOUNT_ID")
-    pipeline_role_arn = env("SAGEMAKER_PIPELINE_ROLE_ARN")
-    return json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "ReadCuratedAndCode",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{bucket_name}/curated/*",
-                        f"arn:aws:s3:::{bucket_name}/pipeline/*",
-                    ],
-                },
-                {
-                    "Sid": "ListTutorialBucket",
-                    "Effect": "Allow",
-                    "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
-                    "Resource": [f"arn:aws:s3:::{bucket_name}"],
-                },
-                {
-                    "Sid": "WriteRuntimeArtifacts",
-                    "Effect": "Allow",
-                    "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                    "Resource": [f"arn:aws:s3:::{bucket_name}/pipeline/*"],
-                },
-                {
-                    "Sid": "AllowCloudWatchLogs",
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:DescribeLogStreams",
-                        "logs:PutLogEvents",
-                    ],
-                    "Resource": [
-                        f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*",
-                        f"arn:aws:logs:{region}:{account_id}:log-group:/aws/sagemaker/*:log-stream:*",
-                    ],
-                },
-                {
-                    "Sid": "AllowEcrImagePull",
-                    "Effect": "Allow",
-                    "Action": [
-                        "ecr:GetAuthorizationToken",
-                        "ecr:BatchCheckLayerAvailability",
-                        "ecr:GetDownloadUrlForLayer",
-                        "ecr:BatchGetImage",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "AllowPipelineRuntime",
-                    "Effect": "Allow",
-                    "Action": [
-                        "sagemaker:AddTags",
-                        "sagemaker:CreateExperiment",
-                        "sagemaker:CreateModel",
-                        "sagemaker:CreateModelPackage",
-                        "sagemaker:CreateModelPackageGroup",
-                        "sagemaker:CreateProcessingJob",
-                        "sagemaker:CreateTrainingJob",
-                        "sagemaker:CreateTrial",
-                        "sagemaker:CreateTrialComponent",
-                        "sagemaker:Describe*",
-                        "sagemaker:List*",
-                        "sagemaker:StopProcessingJob",
-                        "sagemaker:StopTrainingJob",
-                        "sagemaker:UpdateModelPackage",
-                    ],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "PassPipelineRoleToSageMaker",
-                    "Effect": "Allow",
-                    "Action": ["iam:PassRole"],
-                    "Resource": [pipeline_role_arn],
-                    "Condition": {"StringEquals": {"iam:PassedToService": "sagemaker.amazonaws.com"}},
-                },
-            ],
-        }
-    )
-
-
-def ensure_bucket(s3_client, mode: str) -> None:
-    bucket_name = env("DATA_BUCKET")
-    region = env("AWS_REGION")
-    exists = True
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-    except ClientError as exc:
-        code = exc.response.get("Error", {}).get("Code", "")
-        if code in {"404", "NoSuchBucket", "NotFound"}:
-            exists = False
-        else:
-            raise
-
-    if not exists and mode == "check":
-        raise SystemExit(f"Falta bucket: {bucket_name}")
-
-    if not exists:
-        params = {"Bucket": bucket_name}
-        if region != "us-east-1":
-            params["CreateBucketConfiguration"] = {"LocationConstraint": region}
-        s3_client.create_bucket(**params)
-
-    if mode == "apply":
-        s3_client.put_public_access_block(
-            Bucket=bucket_name,
-            PublicAccessBlockConfiguration={
-                "BlockPublicAcls": True,
-                "IgnorePublicAcls": True,
-                "BlockPublicPolicy": True,
-                "RestrictPublicBuckets": True,
-            },
-        )
-        s3_client.put_bucket_versioning(
-            Bucket=bucket_name,
-            VersioningConfiguration={"Status": "Enabled"},
-        )
-        s3_client.put_bucket_encryption(
-            Bucket=bucket_name,
-            ServerSideEncryptionConfiguration={
-                "Rules": [
-                    {
-                        "ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"},
-                        "BucketKeyEnabled": True,
-                    }
-                ]
-            },
-        )
-        s3_client.put_bucket_ownership_controls(
-            Bucket=bucket_name,
-            OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
-        )
-        s3_client.put_bucket_policy(Bucket=bucket_name, Policy=bucket_policy(bucket_name))
-        s3_client.put_bucket_tagging(
-            Bucket=bucket_name,
-            Tagging={"TagSet": tags("tutorial-bootstrap", "datasets-and-artifacts")},
-        )
-
-
-def ensure_role(iam_client, role_name: str, policy_name: str, policy_document: str, usage: str, mode: str) -> None:
-    exists = True
-    try:
-        iam_client.get_role(RoleName=role_name)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") == "NoSuchEntity":
-            exists = False
-        else:
-            raise
-
-    if not exists and mode == "check":
-        raise SystemExit(f"Falta role: {role_name}")
-
-    if not exists:
-        iam_client.create_role(
-            RoleName=role_name,
-            AssumeRolePolicyDocument=assume_role_policy(),
-            Description=f"Tutorial-managed role {usage}",
-            Tags=tags("tutorial-bootstrap", usage),
-        )
-
-    if mode == "apply":
-        iam_client.update_assume_role_policy(
-            RoleName=role_name,
-            PolicyDocument=assume_role_policy(),
-        )
-        iam_client.put_role_policy(
-            RoleName=role_name,
-            PolicyName=policy_name,
-            PolicyDocument=policy_document,
-        )
-        iam_client.tag_role(RoleName=role_name, Tags=tags("tutorial-bootstrap", usage))
-
-    iam_client.get_role(RoleName=role_name)
-    try:
-        iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") != "NoSuchEntity":
-            raise
-        if mode == "check":
-            raise SystemExit(f"Falta inline policy: {policy_name} en role {role_name}") from exc
-        iam_client.put_role_policy(
-            RoleName=role_name,
-            PolicyName=policy_name,
-            PolicyDocument=policy_document,
-        )
-
-
-def ensure_model_package_group(sm_client, mode: str) -> None:
-    group_name = env("MODEL_PACKAGE_GROUP_NAME")
-    try:
-        sm_client.describe_model_package_group(ModelPackageGroupName=group_name)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") != "ValidationException":
-            raise
-        if mode == "check":
-            raise SystemExit(f"Falta Model Package Group: {group_name}") from exc
-        sm_client.create_model_package_group(
-            ModelPackageGroupName=group_name,
-            ModelPackageGroupDescription="Model registry group for the Titanic tutorial.",
-            Tags=tags("tutorial-bootstrap", "model-registry"),
-        )
-
-
-def main() -> None:
-    args = parse_args()
-    mode = require_mode(args)
-    session = boto3.Session(profile_name=env("AWS_PROFILE"), region_name=env("AWS_REGION"))
-    s3_client = session.client("s3")
-    iam_client = session.client("iam")
-    sm_client = session.client("sagemaker")
-
-    ensure_bucket(s3_client, mode)
-    ensure_role(
-        iam_client,
-        env("SAGEMAKER_EXECUTION_ROLE_NAME"),
-        f"{env('SAGEMAKER_EXECUTION_ROLE_NAME')}-policy",
-        execution_inline_policy(),
-        "sagemaker-execution-role",
-        mode,
-    )
-    ensure_role(
-        iam_client,
-        env("SAGEMAKER_PIPELINE_ROLE_NAME"),
-        f"{env('SAGEMAKER_PIPELINE_ROLE_NAME')}-policy",
-        pipeline_inline_policy(),
-        "pipeline-execution-role",
-        mode,
-    )
-    ensure_model_package_group(sm_client, mode)
-    print(f"[INFO] bootstrap {mode} complete")
-
-
-if __name__ == "__main__":
-    main()
-EOF
-chmod +x "$TUTORIAL_ROOT/mlops_assets/bootstrap.py"
-```
-
-### 4. Validar y converger recursos duraderos
-
-```bash
 set -a
 source "$TUTORIAL_ROOT/.env.tutorial"
 set +a
 
-if ! uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --check; then
-  uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --apply
-  uv run python "$TUTORIAL_ROOT/mlops_assets/bootstrap.py" --check
-fi
+aws sts get-caller-identity --profile "$AWS_PROFILE"
+
+aws s3api get-bucket-location \
+  --bucket "$DATA_BUCKET" \
+  --profile "$AWS_PROFILE"
+
+aws s3api get-bucket-versioning \
+  --bucket "$DATA_BUCKET" \
+  --profile "$AWS_PROFILE"
+
+aws iam get-role \
+  --role-name "$SAGEMAKER_EXECUTION_ROLE_NAME" \
+  --profile "$AWS_PROFILE"
+
+aws iam get-role-policy \
+  --role-name "$SAGEMAKER_EXECUTION_ROLE_NAME" \
+  --policy-name "${SAGEMAKER_EXECUTION_ROLE_NAME}-policy" \
+  --profile "$AWS_PROFILE"
+
+aws iam get-role \
+  --role-name "$SAGEMAKER_PIPELINE_ROLE_NAME" \
+  --profile "$AWS_PROFILE"
+
+aws iam get-role-policy \
+  --role-name "$SAGEMAKER_PIPELINE_ROLE_NAME" \
+  --policy-name "${SAGEMAKER_PIPELINE_ROLE_NAME}-policy" \
+  --profile "$AWS_PROFILE"
+
+aws sagemaker describe-model-package-group \
+  --model-package-group-name "$MODEL_PACKAGE_GROUP_NAME" \
+  --profile "$AWS_PROFILE" \
+  --region "$AWS_REGION"
 ```
+
+Si alguno de estos comandos falla, el problema no esta en el tutorial local sino en el estado
+IAM o en el bootstrap durable de la cuenta.
 
 ### 5. Verificar imports V3 y sesion base
 
 ```bash
-set -a
-source "$TUTORIAL_ROOT/.env.tutorial"
-set +a
-
 uv run python - <<'PY'
-import os
 from importlib.metadata import version
 
-import boto3
-from sagemaker.core.helper.session_helper import Session, get_execution_role
+from sagemaker.core.helper.session_helper import Session
 from sagemaker.mlops.workflow.pipeline import Pipeline
 from sagemaker.serve.model_builder import ModelBuilder
 from sagemaker.train import ModelTrainer
@@ -523,55 +189,38 @@ from sagemaker.train import ModelTrainer
 sm_version = version("sagemaker")
 assert sm_version.split(".")[0] == "3", sm_version
 
-boto_session = boto3.Session(
-    profile_name=os.environ["AWS_PROFILE"],
-    region_name=os.environ["AWS_REGION"],
-)
-session = Session(boto_session=boto_session)
-
 print(f"sagemaker={sm_version}")
-print(f"region={session.boto_region_name}")
-print(f"tutorial_bucket={os.environ['DATA_BUCKET']}")
-
-try:
-    boto_session.client("s3").head_bucket(Bucket=os.environ["DATA_BUCKET"])
-    print(f"tutorial_bucket_exists={os.environ['DATA_BUCKET']}")
-except Exception as exc:
-    print(f"tutorial_bucket_unavailable={exc}")
-
-try:
-    print(f"execution_role={get_execution_role()}")
-except Exception:
-    print(f"execution_role={os.environ['SAGEMAKER_EXECUTION_ROLE_ARN']} (from .env.tutorial)")
-
-print("imports_ok=Session ModelTrainer ModelBuilder Pipeline")
+print("imports_ok=Session Pipeline ModelBuilder ModelTrainer")
 PY
 ```
 
 ## IAM usado
 
-- `DataScienceTutorialBootstrap` para bucket, roles y Model Package Group.
-- `data-science-user` como identidad humana operativa.
+- `DataScienceTutorialBootstrap` como policy temporal para validar el bootstrap durable de la
+  fase 00 y para el bootstrap humano OIDC de la fase 05.
+- `data-science-user` como identidad humana operativa del tutorial.
 
 ## Evidencia requerida
 
 1. Salida de `uv sync`.
-2. Salida de `bootstrap.py --check` o `--apply`.
+2. Salida del bloque AWS CLI de validacion.
 3. Salida del bloque de imports y sesion.
 
 ## Criterio de cierre
 
 - Workspace local creado.
 - `.env.tutorial` listo.
-- Recursos duraderos presentes.
+- Recursos duraderos validados por AWS CLI.
 - SageMaker SDK V3 instalado y verificado con `uv`.
 
 ## Riesgos/pendientes
 
-- Si `GITHUB_REPOSITORY` sigue en `replace-me/replace-me`, la fase 05 no podra crear el trust
-  OIDC correcto.
-- Si no ejecutas `bootstrap.py --apply` cuando faltan recursos, las fases 01-05 fallaran.
+- Si `GITHUB_REPOSITORY` sigue en `replace-me/replace-me`, la fase 05 no podra converger el
+  trust OIDC correcto.
+- Si DevOps no ha aplicado las policies o el bootstrap durable, las validaciones AWS CLI
+  fallaran y no debes continuar con las fases 01-05.
+- Esta fase no corrige recursos AWS; solo valida que ya existen y tienen el nombre esperado.
 
 ## Proximo paso
 
-Continuar con [`01-data-ingestion.md`](/Users/jclave/Desktop/volotea/projects/titanic_sagemaker/docs/tutorials/01-data-ingestion.md).
+Continuar con [01-data-ingestion.md](./01-data-ingestion.md).
